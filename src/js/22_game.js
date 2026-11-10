@@ -1,6 +1,7 @@
 /* ═══════════════════════════ BOOT (temporary viewer) ═══════════════════════════ */
+await Promise.race([Promise.all([document.fonts.load('italic 800 48px "Barlow Condensed"'), document.fonts.load('600 20px "Barlow Condensed"'), document.fonts.load('800 48px "Barlow Condensed"'), document.fonts.load('700 20px "Barlow Condensed"')]), new Promise(r => setTimeout(r, 2500))]).catch(() => {});
 Gfx.init();
-IA.Gfx = Gfx;
+IA.Gfx = Gfx; IA.Arena = Arena;
 {
   const def = ROSTER.find(r => r.id === (QS.get('f') || 'vale')) || ROSTER[0];
   const t0 = performance.now(); const fm = new FighterModel(def); IA.fm = fm; IA.buildMs = performance.now() - t0;
@@ -37,5 +38,15 @@ IA.Gfx = Gfx;
       views.forEach((v, j) => cell(cv, c, i + j * tps.length, tps.length, cw, ch, v));
     });
   };
+  if (QS.get('view') === 'arena') {
+    floor.visible = bg.visible = false; Gfx.renderer.setClearColor(0x050506, 1); Arena.build();
+    const fm2 = new FighterModel({ ...def, id: 'b' }); Gfx.scene.add(fm2.group); const an2 = IA.an2 = new Animator(fm2, def.style);
+    an.root.set(-0.75, 0, 0); an.yaw = PI / 2; an.placeFeet(); an2.root.set(0.75, 0, 0); an2.yaw = -PI / 2; an2.placeFeet();
+    an.aimW.look.set(0.75, 1.6, 0); an2.aimW.look.set(-0.75, 1.6, 0);
+    IA.dbg.arena = (pos, at, fov, t = 1, mood) => { if (mood) Arena.setMood(mood, true); Gfx.camera.fov = fov || 36; Gfx.camera.aspect = innerWidth / innerHeight; Gfx.camera.updateProjectionMatrix(); Gfx.camera.position.set(...pos); Gfx.camera.lookAt(...at);
+      for (let i = 0; i < Math.round(t * 60); i++) { an.update(1 / 60); an2.update(1 / 60); Arena.update(1 / 60, Gfx.camera); Gfx.L.uTime.value += 1 / 60; }
+      for (let i = 0; i < 2; i++) { const a = i ? an2 : an; a.pt('ballL', _v1); Arena.blob(i * 2, _v1.x, _v1.z, 0.16, 0.5); a.pt('ballR', _v1); Arena.blob(i * 2 + 1, _v1.x, _v1.z, 0.16, 0.5); }
+      Gfx.render(0); return Gfx.stats; };
+  }
   IA.ready = true;
 }

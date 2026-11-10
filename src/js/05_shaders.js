@@ -173,7 +173,7 @@ void main(){
   vec3 shadeCol = base * shadeMul;
   vec3 col = toneRamp(base, shadeCol, tMid, tLit, warm);
   // skin: saturated warm band along the terminator, like a painted core shadow edge
-  float term = tMid * (1.0 - tMid) * 4.0; col = mix(col, col * vec3(1.25, 0.78, 0.66), term * 0.45 * isSkin);
+  float term = tMid * (1.0 - tMid) * 4.0; col = mix(col, col * vec3(1.22, 0.8, 0.7), term * 0.32 * isSkin);
   // hatching inside the shadow tone
   float ha = (vBind.x * 0.86 + vBind.y * 0.5 + vBind.z * 0.3) / sc * 560.0 + nLow * 5.0;
   float hl = smoothstep(0.35, 0.8, sin(ha) * 0.5 + 0.5) * clamp(1.4 - fwidth(ha) * 0.55, 0.0, 1.0);
