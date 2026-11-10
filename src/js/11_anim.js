@@ -35,7 +35,7 @@ class Animator {
   play(name, opt = {}) {
     const c = typeof name === 'string' ? CLIPS[name] : name, L = this.layer; if (!c) { console.warn('missing clip', name); return; }
     copyPose(this.from, this.pose); L.clip = c; L.time = 0; L.tp = 0; L.s = 0; L.blendIn = opt.blendIn ?? 0.07; L.phases = opt.phases || null; L.speed = opt.speed || 1; L.hold = !!opt.hold; L.evI = 0; L.dur = opt.dur || c.dur || c.end;
-    this.noStep = (c.ch.lfo || c.ch.rfo || c.lockFeet) ? 1 : 0;
+    this.noStep = (c.ch.lfo || c.ch.rfo || c.lockFeet) ? 1 : 0; this.pivot0 = null;
   }
   stop(blend = 0.16) { const L = this.layer; if (!L.clip) return; copyPose(this.from, this.pose); L.clip = null; L.s = 0; L.blendIn = blend; this.noStep = 0; }
   get playing() { return this.layer.clip; }
@@ -47,25 +47,26 @@ class Animator {
   step(i, dx = 0, dz = 0, dur = 0.16, h = 0.04) { const f = this.feet[i]; f.stepping = true; f.t = 0; f.dur = dur; f.from.copy(f.pos); f.fromYaw = f.yaw; f.h = h; f.off.set(dx, 0, dz); f.forced = 1; }
   update(dt) {
     const st = this.style, g = this.model.group, s = this.s, rig = this.rig, L = this.layer, P = this.pose; this.t += dt;
-    g.position.copy(this.root); g.rotation.y = this.yaw; g.updateMatrix(); g.matrixWorld.copy(g.matrix);
+    const sc = L.clip && L.clip.spin; this.spin = sc ? sc[0] * Ease.io(clamp01((L.tp - sc[1]) / (sc[2] - sc[1]))) : 0; const yawE = this.yaw + this.side * this.spin;
+    g.position.copy(this.root); g.rotation.y = yawE; g.updateMatrix(); g.matrixWorld.copy(g.matrix);
     // ── footwork ──────────────────────────────────────────────────────────
     const vx = this.vel.x, vz = this.vel.z, spd = Math.hypot(vx, vz); this.settle = spd < 0.12 ? this.settle + dt : 0; this.stepCool -= dt;
     const F = this.feet, hw = Animator._hw, err = [0, 0], yerr = [0, 0];
     for (let i = 0; i < 2; i++) { hw[i].copy(this.home[i]).add(F[i].off).applyMatrix4(g.matrixWorld); hw[i].y = 0; hw[i].x += vx * 0.09; hw[i].z += vz * 0.09;
-      err[i] = Math.hypot(hw[i].x - F[i].pos.x, hw[i].z - F[i].pos.z); yerr[i] = Math.abs(wrapPi(this.yaw + this.side * this.homeYaw[i] - F[i].yaw)); }
+      err[i] = Math.hypot(hw[i].x - F[i].pos.x, hw[i].z - F[i].pos.z); yerr[i] = Math.abs(wrapPi(yawE + this.side * this.homeYaw[i] - F[i].yaw)); }
     if (!F[0].stepping && !F[1].stepping && this.stepCool <= 0 && !this.noStep) {
       const thr = (spd > 0.15 || this.settle < 0.3 ? st.stepThr : 0.035) * s, c0 = err[0] > thr || yerr[0] > 0.4, c1 = err[1] > thr || yerr[1] > 0.4; let pick = -1;
       if (c0 && c1) pick = spd > 0.1 ? ((vx * (hw[0].x - hw[1].x) + vz * (hw[0].z - hw[1].z)) > 0 ? 0 : 1) : (err[0] + yerr[0] * 0.2 > err[1] + yerr[1] * 0.2 ? 0 : 1); else if (c0) pick = 0; else if (c1) pick = 1;
-      if (pick >= 0) { const f = F[pick]; f.stepping = true; f.t = 0; f.from.copy(f.pos); f.fromYaw = f.yaw; f.dur = st.stepDur * clamp(1.15 - spd * 0.22, 0.62, 1.1) * (0.9 + 0.2 * this.fatigue); f.h = (0.022 + 0.05 * clamp01(err[pick] / (0.3 * s))) * s; }
+      if (pick >= 0) { const f = F[pick]; f.stepping = true; f.t = 0; f.from.copy(f.pos); f.fromYaw = f.yaw; f.dur = st.stepDur * clamp(1.15 - spd * 0.22, 0.62, 1.1) * (0.9 + 0.2 * this.fatigue) * (sc ? 0.55 : 1); f.h = (0.022 + 0.05 * clamp01(err[pick] / (0.3 * s))) * s; }
     }
     for (let i = 0; i < 2; i++) { const f = F[i]; if (!f.stepping) { f.lift = 0; continue; }
       f.t += dt / f.dur; const u = Ease.io(Math.min(1, f.t)), lead = (1 - u) * f.dur * 0.5;
       f.pos.x = lerp(f.from.x, hw[i].x + vx * lead, u); f.pos.z = lerp(f.from.z, hw[i].z + vz * lead, u); f.lift = Math.sin(PI * Math.min(1, f.t)) * f.h;
-      f.yaw = f.fromYaw + wrapPi(this.yaw + this.side * this.homeYaw[i] - f.fromYaw) * u;
+      f.yaw = f.fromYaw + wrapPi(yawE + this.side * this.homeYaw[i] - f.fromYaw) * u;
       if (f.t >= 1) { f.stepping = false; f.lift = 0; f.forced = 0; this.stepCool = 0.015; if (this.onStep) this.onStep(i, f.h); } }
     // feet → root space
     const inv = Animator._inv.copy(g.matrixWorld).invert(), c = Animator._c.set(0, 0, 0);
-    for (let i = 0; i < 2; i++) { const rf = rig.foot[i]; rf.ball.copy(F[i].pos).applyMatrix4(inv); rf.ball.y = F[i].lift; rf.yaw = this.side * wrapPi(F[i].yaw - this.yaw); c.x += rf.ball.x * 0.5; c.z += rf.ball.z * 0.5; }
+    for (let i = 0; i < 2; i++) { const rf = rig.foot[i]; rf.ball.copy(F[i].pos).applyMatrix4(inv); rf.ball.y = F[i].lift; rf.yaw = this.side * wrapPi(F[i].yaw - yawE); c.x += rf.ball.x * 0.5; c.z += rf.ball.z * 0.5; }
     // ── stance layer ──────────────────────────────────────────────────────
     this.gW = damp(this.gW, this.guardW, 22, dt); this.gL = damp(this.gL, this.guardLvl, 16, dt);
     const B = this.base, S = this.stance, fat = this.fatigue, wob = this.wobble;
@@ -77,7 +78,7 @@ class Animator {
     B.hp[0] += c.x * 0.45 + (rig.foot[sup].ball.x - c.x) * 0.22 * stepU + st.sway * s * sw;
     B.hp[2] += c.z * 0.45 + (rig.foot[sup].ball.z - c.z) * 0.22 * stepU + st.sway * 0.6 * s * sw2;
     B.hp[1] += (bn * bs - 0.012 * stepU + 0.02 * fat - 0.035 * wob) * s + br * ba * 0.25 * s;
-    const lvx = (vx * Math.cos(this.yaw) - vz * Math.sin(this.yaw)) * this.side, lvz = vx * Math.sin(this.yaw) + vz * Math.cos(this.yaw);
+    const lvx = (vx * Math.cos(yawE) - vz * Math.sin(yawE)) * this.side, lvz = vx * Math.sin(yawE) + vz * Math.cos(yawE);
     B.sp[1] += clamp(lvz * 0.04, -0.07, 0.09) + br * ba + 0.1 * fat + 0.1 * wob; B.sp[2] += clamp(lvx * 0.05, -0.08, 0.08) - st.sway * 2.5 * sw + 0.13 * wob * Math.sin(this.t * 4.3);
     B.sp[0] += st.sway * 2 * sw2;
     B.sh[0] += Math.max(0, br) * ba * 1.6; B.sh[1] += Math.max(0, br) * ba * 1.6;
@@ -108,6 +109,7 @@ class Animator {
     const sh = this.shake > 0 ? Math.sin(this.t * 190) * this.shake : 0;
     this.out = this.out || newPose(); const O = copyPose(this.out, P);
     O.hd[0] += Sp.hy.x; O.hd[1] += Sp.hp.x; O.hd[2] += Sp.hr.x; O.sp[0] += Sp.st.x; O.sp[1] += Sp.sb.x; O.sp[2] += Sp.ss.x; O.hp[0] += Sp.px.x * s + sh; O.hp[1] += Sp.py.x * s; O.hp[2] += Sp.pz.x * s;
+    if (sc && L.clip) { const pv = L.clip.pivot; if (pv) { const i = pv === 'lf' ? 0 : 1; F[i].yaw = (this.pivot0 ?? (this.pivot0 = F[i].yaw)) + this.side * this.spin; O[pv + 'r'][0] += 0; } } else this.pivot0 = null;
     // aim points → root space
     for (const k in this.aimW) rig.aim[k].copy(this.aimW[k]).applyMatrix4(inv);
     rig.solve(O);
@@ -115,7 +117,7 @@ class Animator {
   /** rig landmark → world space */
   pt(name, out) { return out.copy(this.rig.P[name]).applyMatrix4(this.model.group.matrixWorld); }
   /** root-space direction → world */
-  dir(x, y, z, out) { return out.set(x * this.side, y, z).applyAxisAngle(UP, this.yaw); }
+  dir(x, y, z, out) { return out.set(x * this.side, y, z).applyAxisAngle(UP, this.yaw + this.side * (this.spin || 0)); }
   resetSprings() { for (const k in this.sp) { this.sp[k].x = 0; this.sp[k].v = 0; } }
 }
 Animator._hw = [V3(), V3()]; Animator._inv = new THREE.Matrix4(); Animator._c = V3();

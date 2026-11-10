@@ -58,7 +58,7 @@ ${GLSL.noise}
 uniform vec3 uKeyDir, uKeyCol, uFillDir, uFillCol, uRimDir, uRimCol, uAmbTop, uAmbBot;
 uniform float uTime, uShadowAmt;
 uniform vec3 uSkin, uSkinShade, uColA, uColB, uColC, uColD, uHairCol;
-uniform float uSweat, uCrease, uHatch, uDirt, uFlash, uStubble, uHideOn;
+uniform float uSweat, uCrease, uHatch, uDirt, uFlash, uStubble, uHideOn, uDim;
 uniform vec4 uDmg;           // head, body, arms, legs  (0..1)
 uniform vec4 uZone;          // hipY, shoulderX, ankleY, scale
 uniform vec4 uMarks[6];      // recent impact marks: xyz in bind space, w = strength
@@ -194,7 +194,7 @@ void main(){
   vec3 Hh = normalize(uKeyDir + V); float sp = pow(max(dot(N, Hh), 0.0), mix(18.0, 70.0, gloss));
   float sweatDots = smoothstep(0.82, 0.9, nHi) * uSweat * isSkin * tMid;
   col += uKeyCol * (smoothstep(0.32, 0.5, sp + wob) * specAmt + sweatDots * 0.22) * shd;
-  col += uFlash * vec3(1.0, 0.92, 0.8);
+  col = col * uDim + uFlash * vec3(1.0, 0.92, 0.8);
   gl_FragColor = vec4(col, 1.0);
 }`;
 

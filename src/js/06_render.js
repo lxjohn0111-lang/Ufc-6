@@ -76,8 +76,6 @@ const Gfx = {
     const u = this.mFinal.uniforms; u.tScene.value = this.rtScene.texture; u.tBloom.value = src.texture; u.uBloom.value = fx.bloom / n * 1.6; u.uExposure.value = fx.exposure; u.uVig.value = fx.vig;
     u.uChroma.value = fx.chroma; u.uRadial.value = fx.radial; u.uDesat.value = fx.desat; u.uFade.value = fx.fade; u.uFlash.value = fx.flash; u.uLetter.value = fx.letter;
     this.blit(this.mFinal, null);
-    // decay transient impact effects
-    fx.radial = damp(fx.radial, 0, 9, dt); fx.chroma = damp(fx.chroma, 0, 8, dt); fx.flash = damp(fx.flash, 0, 12, dt);
     // adaptive resolution governor: hold frame rate on weaker GPUs
     this.fpsAvg = lerp(this.fpsAvg, 1 / Math.max(dt, 1e-3), 0.04); this.frames++;
     if (!QS.has('noadapt') && this.frames > 180 && this.frames % 90 === 0) {
@@ -85,6 +83,7 @@ const Gfx = {
       else if (this.fpsAvg > 58 && this.scale < 1 && ++this.slow > 6) { this.slow = 0; this.scale = Math.min(1, this.scale + 0.1); this.resize(); }
     }
   },
+  tick(dt) { const fx = this.fx; fx.radial = damp(fx.radial, 0, 10, dt); fx.chroma = damp(fx.chroma, 0, 9, dt); fx.flash = damp(fx.flash, 0, 12, dt); },   // transient impact effects fade on their own
   /** render the current scene with a given camera into a canvas (used for fighter portraits) */
   snapshot(camera, w, h) {
     const rt = new THREE.WebGLRenderTarget(w, h, { samples: 4, depthBuffer: true, type: THREE.HalfFloatType });

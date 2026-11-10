@@ -52,7 +52,7 @@ class FacePainter {
   draw() {
     const c = this.ctx, f = this.f, e = this.cur, S = 2.56, X = mm => 256 + mm * S, Y = mm => 256 - (mm - 25) * S, skin = this.look.skin, sp = (this.look.face && this.look.face.eyeSp) || 1;
     c.clearRect(0, 0, 512, 512); c.lineCap = 'round'; c.lineJoin = 'round';
-    const line = shadeHex(skin, [0.34, 0.24, 0.24]), soft = (k, a) => shadeHex(skin, k, a), hair = this.look.hairCol || '#1a1412';
+    const line = shadeHex(skin, [0.34, 0.24, 0.24]), soft = (k, a) => shadeHex(skin, k, a), hair = this.look.browCol || this.look.hairCol || '#1a1412';
     const blink = this.blink > 0 ? Math.sin((1 - this.blink / 0.14) * PI) : 0;
     for (const side of [1, -1]) {
       const sw = this.sw[side > 0 ? 0 : 1], cx = X(side * 31 * sp), cy = Y(65.5), w = 14.2 * S * f.eyeW, lid = clamp(Math.max(e.lid, blink) + sw * 0.75, 0, 1);
@@ -141,8 +141,8 @@ function makeDecal(look) {
 }
 
 class FighterModel {
-  constructor(def) {
-    this.def = def; const look = this.look = def.look, sculpt = Anatomy.build(look); this.sk = sculpt.sk; const sk = this.sk, s = sk.s;
+  constructor(def, sculpt) {
+    this.def = def; const look = this.look = def.look; sculpt = sculpt || Anatomy.build(look); this.sk = sculpt.sk; const sk = this.sk, s = sk.s;
     this.group = new THREE.Group(); this.group.name = def.id;
     // bones: identity rotations at bind, explicit inverses
     this.bones = BONES.map(n => { const b = new THREE.Bone(); b.name = n; return b; });
@@ -154,7 +154,7 @@ class FighterModel {
     this.marks = Array.from({ length: 6 }, () => new THREE.Vector4(0, -9, 0, 0)); this.markI = 0;
     this.dmg = new THREE.Vector4(0, 0, 0, 0);
     const L = Gfx.L, dark = look.dark || 0, shadeMul = look.shade ? new THREE.Vector3(...look.shade) : new THREE.Vector3(lerp(0.52, 0.44, dark), lerp(0.36, 0.34, dark), lerp(0.4, 0.44, dark));
-    const sharedU = { uSkin: { value: new THREE.Color(look.skin) }, uSkinShade: { value: shadeMul }, uHairCol: { value: new THREE.Color(look.hairCol || '#1a1412') }, uSweat: { value: 0.12 }, uCrease: { value: 0.35 + 0.5 * sk.b.def }, uHatch: { value: 0.55 },
+    const sharedU = { uSkin: { value: new THREE.Color(look.skin) }, uSkinShade: { value: shadeMul }, uHairCol: { value: new THREE.Color(look.hairCol || '#1a1412') }, uDim: { value: 1 }, uSweat: { value: 0.12 }, uCrease: { value: 0.35 + 0.5 * sk.b.def }, uHatch: { value: 0.55 },
       uDirt: { value: 0 }, uFlash: { value: 0 }, uDmg: { value: this.dmg }, uZone: { value: new THREE.Vector4(sk.hipY + 0.02, sk.J.uarmL[0] + 0.03 * s, sk.ankY, s) }, uMarks: { value: this.marks }, uHideOn: { value: 1 } };
     this.u = sharedU; this.mats = []; this.meshes = {};
     const ink = new THREE.Color(look.ink || '#1d0f0c');
@@ -171,7 +171,7 @@ class FighterModel {
     };
     const Hd = sk.J.head, hs = s * sk.b.head, g = look.gloves, sh = look.shorts;
     add('body', 'BODY', {});
-    add('head', 'HEAD', { uFace: { value: this.face.tex }, uFaceRect: { value: new THREE.Vector4(Hd[0], Hd[1] + 0.025 * hs, 1 / (0.2 * hs), 1 / (0.2 * hs)) }, uColD: { value: new THREE.Vector4(look.hair && look.hair.scalp != null ? look.hair.scalp : 1, 0, 1, 0) }, uStubble: { value: (look.beard && look.beard.stubble) || 0 } });
+    add('head', 'HEAD', { uFace: { value: this.face.tex }, uFaceRect: { value: new THREE.Vector4(Hd[0], Hd[1] + 0.025 * hs, 1 / (0.2 * hs), 1 / (0.2 * hs)) }, uColD: { value: new THREE.Vector4(look.hair && look.hair.scalp != null ? look.hair.scalp : 1, 0, 1, 0) }, uStubble: { value: (look.beard && look.beard.stubble) || 0 }, uHairCol: { value: new THREE.Color(look.scalpCol || look.hairCol || '#1a1412') } });
     const gu = { uColA: { value: new THREE.Color(g.a) }, uColB: { value: new THREE.Color(g.b) }, uColC: { value: new THREE.Color(g.c) } };
     add('handL', 'HAND', gu); add('handR', 'HAND', gu);
     const fu = { uColB: { value: new THREE.Color(look.wrap || '#1c1c1e') }, uColD: { value: new THREE.Vector4(1, look.wrap ? 1 : 0, 1, 0) } };
@@ -182,6 +182,7 @@ class FighterModel {
     const hairInk = hexMul(look.hairCol || '#1a1412', 0.25, 0.25, 0.3);
     add('hair', 'HAIR', { uColD: { value: new THREE.Vector4(1, 0, look.hair && look.hair.gloss != null ? look.hair.gloss : 1, 0) } }, hairInk);
     add('beard', 'HAIR', { uColD: { value: new THREE.Vector4(1, 0, 0.3, 0) } }, hairInk);
+    this.hairCol = look.browCol || look.hairCol;
     this.stats = { ms: sk.buildMs, verts: Object.values(sculpt.meshes).reduce((a, m) => a + m.nv, 0), tris: Object.values(sculpt.meshes).reduce((a, m) => a + m.nt, 0) };
     if (def.stance === 'southpaw') this.group.scale.x = -1;
   }
@@ -191,7 +192,22 @@ class FighterModel {
     const l = b.worldToLocal(_v1.copy(world)); const m = this.marks[this.markI = (this.markI + 1) % 6]; m.set(bp[0] + l.x, bp[1] + l.y, bp[2] + l.z, clamp01(strength));
   }
   setFlash(v) { this.u.uFlash.value = v; }
+  setDim(v) { this.u.uDim.value = v; }
   resetCondition() { for (const m of this.marks) m.set(0, -9, 0, 0); this.dmg.set(0, 0, 0, 0); this.u.uSweat.value = 0.12; this.u.uDirt.value = 0; this.face.reset(); }
   setVisible(v) { this.group.visible = v; }
   dispose() { this.group.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); this.face.tex.dispose(); this.group.removeFromParent(); }
 }
+
+/** model cache: one instance per fighter per corner; mirror matches get an alternate strip */
+const Models = {
+  map: new Map(),
+  altLook(look) { return { ...look, shorts: { ...look.shorts, a: '#e6e0d2', b: look.shorts.a, c: look.shorts.b === '#e9e3d6' || look.shorts.b === '#f0ece2' ? look.shorts.c : look.shorts.b, ink: '#3a3a40' }, gloves: { a: '#e6e0d2', b: look.gloves.b, c: look.gloves.c } }; },
+  async get(def, alt) {
+    const key = def.id + (alt ? ':alt' : ''); if (this.map.has(key)) return this.map.get(key);
+    const q = Gfx.tier === 'high' ? 1 : Gfx.tier === 'medium' ? 0.82 : 0.68;
+    const sc = await Sculptor.build(def.id + ':' + q, { ...def.look, quality: q });
+    if (this.map.has(key)) return this.map.get(key);
+    const m = new FighterModel(alt ? { ...def, look: this.altLook(def.look) } : def, sc); m.group.visible = false; Gfx.scene.add(m.group); this.map.set(key, m); return m;
+  },
+  hideAll() { for (const m of this.map.values()) m.group.visible = false; }
+};
