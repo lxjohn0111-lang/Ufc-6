@@ -1068,6 +1068,363 @@ class FighterModel {
   dispose() { this.group.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); this.face.tex.dispose(); this.group.removeFromParent(); }
 }
 
+// ───────────────────────── 09_rig.js ─────────────────────────
+/* ═══════════════════════════ CONTROL RIG ═══════════════════════════
+   Animation is authored on a control rig, not on raw joint angles: hips, spine, head, and
+   hand / foot targets with elbow-knee poles. Two-bone IK resolves the limbs, so fists land
+   where they are aimed and feet stay planted on the canvas. All maths runs in the fighter's
+   root space with lead = left; southpaws are the same solve mirrored by the model group. */
+const CHANNELS = { hp: 3, hr: 3, sp: 3, hd: 3, lh: 3, rh: 3, lha: 4, rha: 4, lhr: 1, rhr: 1, le: 1, re: 1, lf: 3, rf: 3, lfa: 4, rfa: 4, lfr: 3, rfr: 3, lfo: 1, rfo: 1, lk: 3, rk: 3, look: 1, sh: 2 };
+const CH_NAMES = Object.keys(CHANNELS);
+function newPose() { const p = {}; for (const c of CH_NAMES) p[c] = new Float32Array(CHANNELS[c]); p.look[0] = 1; return p; }
+function copyPose(dst, src) { for (const c of CH_NAMES) dst[c].set(src[c]); return dst; }
+function lerpPose(dst, a, b, t) { for (const c of CH_NAMES) { const d = dst[c], x = a[c], y = b[c]; for (let i = 0; i < d.length; i++) d[i] = x[i] + (y[i] - x[i]) * t; } return dst; }
+function setPose(p, o) { for (const k in o) { const v = o[k]; if (typeof v === 'number') p[k][0] = v; else p[k].set(v); } return p; }
+
+class Rig {
+  constructor(model) {
+    this.model = model; const sk = this.sk = model.sk, B = sk.bind; this.bones = model.bones;
+    const v = i => V3(B[i][0], B[i][1], B[i][2]), off = (i, j) => v(i).sub(v(j));
+    this.o = { spine: off(BN.spine, BN.hips), chest: off(BN.chest, BN.spine), neck: off(BN.neck, BN.chest), head: off(BN.head, BN.neck), clavL: off(BN.clavL, BN.chest), clavR: off(BN.clavR, BN.chest),
+      shL: off(BN.uarmL, BN.clavL), shR: off(BN.uarmR, BN.clavR), hipL: off(BN.thighL, BN.hips), hipR: off(BN.thighR, BN.hips), ankL: off(BN.footL, BN.toeL), ankR: off(BN.footR, BN.toeR) };
+    this.fist = 0.062 * sk.s; this.len = { ua: sk.ua, fa: sk.fa + this.fist, th: sk.thigh, sn: sk.shin };
+    // bind frames (d0, h0, d0×h0) for each limb segment → inverse quaternions
+    const frameInv = (d, pole) => { const h = pole.clone().cross(d).normalize(), n = d.clone().cross(h); return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(d, h, n)).invert(); };
+    const dn = (a, b) => v(b).sub(v(a)).normalize(), back = V3(0, 0, -1), fwd = V3(0, 0, 1);
+    this.fi = { uaL: frameInv(dn(BN.uarmL, BN.farmL), back), faL: frameInv(dn(BN.farmL, BN.handL), back), uaR: frameInv(dn(BN.uarmR, BN.farmR), back), faR: frameInv(dn(BN.farmR, BN.handR), back),
+      thL: frameInv(dn(BN.thighL, BN.shinL), fwd), snL: frameInv(dn(BN.shinL, BN.footL), fwd), thR: frameInv(dn(BN.thighR, BN.shinR), fwd), snR: frameInv(dn(BN.shinR, BN.footR), fwd) };
+    this.Q = BONES.map(() => new THREE.Quaternion());            // world (root-space) rotations
+    this.P = {}; for (const n of ['hips', 'chest', 'neck', 'head', 'headC', 'shL', 'shR', 'elL', 'elR', 'fistL', 'fistR', 'hipL', 'hipR', 'knL', 'knR', 'ankL', 'ankR', 'ballL', 'ballR', 'spine', 'wrL', 'wrR', 'toeL', 'toeR']) this.P[n] = V3();
+    this.foot = [{ ball: V3(0.14, 0, 0.2), yaw: 0 }, { ball: V3(-0.14, 0, -0.2), yaw: 0 }];   // root-space plants, set by locomotion
+    this.aim = { lh: V3(), rh: V3(), lf: V3(), rf: V3(), look: V3(0, 1.6, 2) };              // root-space aim points
+    this.hipsStand = B[BN.hips][1]; this.ballH = B[BN.toeL][1];
+    this.ragBlend = 0;
+  }
+  _ik(S, T, l1, l2, pole, outE, outH) {       // returns reach ratio; outE elbow/knee, outH hinge axis
+    const d = _v1.copy(T).sub(S); let dist = d.length(); const maxL = (l1 + l2) * 0.999, minL = Math.abs(l1 - l2) + 0.02; const ratio = dist / (l1 + l2);
+    dist = clamp(dist, minL, maxL); d.normalize();
+    const a = (l1 * l1 - l2 * l2 + dist * dist) / (2 * dist), hgt = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+    const pp = _v2.copy(pole).addScaledVector(d, -pole.dot(d)); if (pp.lengthSq() < 1e-6) pp.set(0, -1, 0).addScaledVector(d, d.y); pp.normalize();
+    outE.copy(S).addScaledVector(d, a).addScaledVector(pp, hgt); outH.copy(pp).cross(d).normalize();
+    T.copy(S).addScaledVector(d, dist);        // clamp target to reachable
+    return ratio;
+  }
+  _frame(u, h, inv, out) { const n = _v3.copy(u).cross(h); _m1.makeBasis(u, _v4.copy(h), n); return out.setFromRotationMatrix(_m1).multiply(inv); }
+  /** pose → bone transforms */
+  solve(p) {
+    const Q = this.Q, P = this.P, o = this.o, e = Rig._e, q = Rig._q, sk = this.sk, s = sk.s;
+    // feet first (they constrain the hips)
+    const foot = [{}, {}];
+    for (let i = 0; i < 2; i++) {
+      const f = this.foot[i], L = i === 0, off = p[L ? 'lf' : 'rf'], rot = p[L ? 'lfr' : 'rfr'], own = p[L ? 'lfo' : 'rfo'][0], a = p[L ? 'lfa' : 'rfa'];
+      const ball = P[L ? 'ballL' : 'ballR'];
+      ball.set(lerp(f.ball.x + off[0], off[0], own), lerp(this.ballH + f.ball.y + off[1], off[1], own), lerp(f.ball.z + off[2], off[2], own));
+      if (a[0] > 0.001) { const t = this.aim[L ? 'lf' : 'rf']; ball.x = lerp(ball.x, t.x + a[1], a[0]); ball.y = lerp(ball.y, t.y + a[2], a[0]); ball.z = lerp(ball.z, t.z + a[3], a[0]); }
+      foot[i].yaw = lerp(f.yaw, 0, own) + rot[0]; foot[i].pitch = rot[1]; foot[i].roll = rot[2];
+    }
+    // hips
+    const hips = P.hips.set(p.hp[0], this.hipsStand + p.hp[1], p.hp[2]);
+    Q[BN.hips].setFromEuler(e.set(p.hr[1], p.hr[0], -p.hr[2], 'YXZ'));
+    // legs may not over-extend: lift the heel, then drop the hips
+    for (let pass = 0; pass < 2; pass++) for (let i = 0; i < 2; i++) {
+      const L = i === 0, ball = P[L ? 'ballL' : 'ballR'], hj = _v1.copy(L ? o.hipL : o.hipR).applyQuaternion(Q[BN.hips]).add(hips), f = foot[i];
+      q.setFromEuler(e.set(f.pitch, f.yaw, f.roll, 'YXZ')); const ank = _v2.copy(L ? o.ankL : o.ankR).applyQuaternion(q).add(ball);
+      const over = hj.distanceTo(ank) - (this.len.th + this.len.sn) * 0.985;
+      if (over > 0) { const w = 1 - p[L ? 'lfo' : 'rfo'][0]; if (pass === 0) f.pitch += Math.min(0.75, over * 5) * w; else hips.y -= over * 1.05 * w; }   // a kicking leg never drags the hips down
+    }
+    // spine
+    Q[BN.spine].setFromEuler(e.set(p.sp[1] * 0.45, p.sp[0] * 0.4, -p.sp[2] * 0.45, 'YXZ')).premultiply(Q[BN.hips]);
+    Q[BN.chest].setFromEuler(e.set(p.sp[1] * 0.55, p.sp[0] * 0.6, -p.sp[2] * 0.55, 'YXZ')).premultiply(Q[BN.spine]);
+    P.spine.copy(o.spine).applyQuaternion(Q[BN.hips]).add(hips);
+    P.chest.copy(o.chest).applyQuaternion(Q[BN.spine]).add(P.spine);
+    P.neck.copy(o.neck).applyQuaternion(Q[BN.chest]).add(P.chest);
+    // head: look at target within neck limits
+    const qci = _q1.copy(Q[BN.chest]).invert(), hl = _v1.copy(this.aim.look).sub(_v2.copy(o.head).applyQuaternion(Q[BN.chest]).add(P.neck)).applyQuaternion(qci);
+    const lw = p.look[0], yaw = clamp(Math.atan2(hl.x, hl.z), -1.25, 1.25) * lw + p.hd[0], pitch = clamp(-Math.atan2(hl.y, Math.hypot(hl.x, hl.z)), -0.6, 0.6) * lw + p.hd[1];
+    Q[BN.neck].setFromEuler(e.set(pitch * 0.4, yaw * 0.4, -p.hd[2] * 0.4, 'YXZ')).premultiply(Q[BN.chest]);
+    Q[BN.head].setFromEuler(e.set(pitch * 0.6, yaw * 0.6, -p.hd[2] * 0.6, 'YXZ')).premultiply(Q[BN.neck]);
+    P.head.copy(o.head).applyQuaternion(Q[BN.neck]).add(P.neck);
+    P.headC.set(0, 0.075 * s, 0.02 * s).applyQuaternion(Q[BN.head]).add(P.head);
+    // arms
+    for (let i = 0; i < 2; i++) {
+      const L = i === 0, sx = L ? 1 : -1, hp = p[L ? 'lh' : 'rh'], a = p[L ? 'lha' : 'rha'], fl = p[L ? 'le' : 're'][0];
+      const T = P[L ? 'fistL' : 'fistR'].set(hp[0], hp[1], hp[2]).applyQuaternion(Q[BN.chest]).add(P.chest);
+      if (a[0] > 0.001) { const t = this.aim[L ? 'lh' : 'rh']; T.x = lerp(T.x, t.x + a[1], a[0]); T.y = lerp(T.y, t.y + a[2], a[0]); T.z = lerp(T.z, t.z + a[3], a[0]); }
+      // shoulder girdle follows the reach: protract when punching, elevate when the hand is high
+      const sh0 = _v2.copy(L ? o.clavL : o.clavR).add(L ? o.shL : o.shR).applyQuaternion(Q[BN.chest]).add(P.chest);
+      const rel = _v3.copy(T).sub(sh0).applyQuaternion(qci), ext = clamp01(rel.length() / (this.len.ua + this.len.fa)), ext2 = ext * ext;
+      const prot = clamp(rel.z / (this.len.ua + this.len.fa), -0.3, 1) * 0.42 * ext2, elev = clamp(rel.y / (this.len.ua + this.len.fa) * 0.5 * ext2 + 0.08 * (1 - ext) + p.sh[i], -0.15, 0.4);
+      const ci = L ? BN.clavL : BN.clavR; Q[ci].setFromEuler(e.set(0, -sx * prot, sx * elev, 'YXZ')).premultiply(Q[BN.chest]);
+      const S = P[L ? 'shL' : 'shR'].copy(L ? o.shL : o.shR).applyQuaternion(Q[ci]).add(_v2.copy(L ? o.clavL : o.clavR).applyQuaternion(Q[BN.chest])).add(P.chest);
+      const pole = Rig._pole.set(sx * lerp(0.32, 1, fl), lerp(-1, 0.18, fl), lerp(-0.22, -0.4, fl)).applyQuaternion(Q[BN.chest]);
+      const E = P[L ? 'elL' : 'elR'], H = Rig._h; this._ik(S, T, this.len.ua, this.len.fa, pole, E, H);
+      const u = Rig._u.copy(E).sub(S).normalize(), f = Rig._f.copy(T).sub(E).normalize();
+      this._frame(u, H, this.fi[L ? 'uaL' : 'uaR'], Q[L ? BN.uarmL : BN.uarmR]);
+      const fq = this._frame(f, H, this.fi[L ? 'faL' : 'faR'], Q[L ? BN.farmL : BN.farmR]);
+      const tw = p[L ? 'lhr' : 'rhr'][0]; if (tw) fq.premultiply(q.setFromAxisAngle(f, sx * tw));
+      Q[L ? BN.handL : BN.handR].copy(fq);
+      P[L ? 'wrL' : 'wrR'].copy(T).addScaledVector(f, -this.fist);
+    }
+    // legs
+    for (let i = 0; i < 2; i++) {
+      const L = i === 0, f = foot[i], ball = P[L ? 'ballL' : 'ballR'], kp = p[L ? 'lk' : 'rk'];
+      const fq = Q[L ? BN.footL : BN.footR].setFromEuler(e.set(f.pitch, f.yaw, f.roll, 'YXZ'));
+      const ank = P[L ? 'ankL' : 'ankR'].copy(L ? o.ankL : o.ankR).applyQuaternion(fq).add(ball);
+      const hj = P[L ? 'hipL' : 'hipR'].copy(L ? o.hipL : o.hipR).applyQuaternion(Q[BN.hips]).add(hips);
+      const pole = Rig._pole.set(Math.sin(f.yaw) * 0.8 + (L ? 0.12 : -0.12) + kp[0], kp[1], Math.cos(f.yaw) * 0.8 + 0.4 + kp[2]);
+      const K = P[L ? 'knL' : 'knR'], H = Rig._h, T = Rig._t.copy(ank); this._ik(hj, T, this.len.th, this.len.sn, pole, K, H);
+      const u = Rig._u.copy(K).sub(hj).normalize(), sv = Rig._f.copy(T).sub(K).normalize();
+      this._frame(u, H, this.fi[L ? 'thL' : 'thR'], Q[L ? BN.thighL : BN.thighR]); this._frame(sv, H, this.fi[L ? 'snL' : 'snR'], Q[L ? BN.shinL : BN.shinR]);
+      // toes stay flat on the canvas when the heel lifts; point with the foot in the air
+      const grounded = clamp01(1 - (ball.y - this.ballH) / 0.06);
+      Q[L ? BN.toeL : BN.toeR].setFromEuler(e.set(f.pitch * (1 - grounded), f.yaw, f.roll * (1 - grounded), 'YXZ'));
+      P[L ? 'toeL' : 'toeR'].set(0, 0, 0.06 * s).applyQuaternion(fq).add(ball);
+    }
+    this.apply();
+  }
+  /** write world rotations into the bone hierarchy as local rotations */
+  apply() {
+    const Q = this.Q, b = this.bones;
+    b[0].position.copy(this.P.hips); b[0].quaternion.copy(Q[0]);
+    for (let i = 1; i < BONES.length; i++) b[i].quaternion.copy(Rig._q.copy(Q[BONE_PARENT[i]]).invert()).multiply(Q[i]);
+  }
+  /** root-space point → world */
+  world(p, out) { return out.copy(p).applyMatrix4(this.model.group.matrixWorld); }
+}
+Rig._t = V3(); Rig._e = new THREE.Euler(); Rig._q = new THREE.Quaternion(); Rig._pole = V3(); Rig._h = V3(); Rig._u = V3(); Rig._f = V3();
+
+// ───────────────────────── 10_clips.js ─────────────────────────
+/* ═══════════════════════════ ANIMATION CLIPS ═══════════════════════════
+   Authored on the control rig (orthodox, lead = left). Strike clips are phase-timed:
+   t 0→1 startup (contact pose at 1), 1→2 active / follow-through, 2→3 recovery, so the same
+   clip follows each fighter's own frame data. Torso / hip channels are deltas from the
+   fighter's stance, which keeps every clip in that fighter's posture. `rel` is where the
+   clip starts handing control back to the stance.
+   Channel key:  lh/rh hand (chest space)   lha/rha [aim weight, offset xyz]   lhr/rhr fist turn
+                 le/re elbow flare   hp hips offset   hr hips [yaw,pitch,roll]   sp spine [twist,bend,side]
+                 lf/rf foot   lfo/rfo foot ownership   lfa/rfa foot aim   lfr/rfr foot [yaw,pitch,roll]   lk/rk knee pole */
+const ADDITIVE = { hp: 1, hr: 1, sp: 1, hd: 1, lfr: 1, rfr: 1, sh: 1, lk: 1, rk: 1 };
+const SPLINE = { lh: 1, rh: 1, lf: 1, rf: 1 };
+function makeClip(def) {
+  const ch = {};
+  for (const k of def.keys) for (const c in k) { if (c === 't' || c === 'e') continue; (ch[c] || (ch[c] = [])).push({ t: k.t, v: typeof k[c] === 'number' ? [k[c]] : k[c], e: Ease[k.e || 'io'] }); }
+  const last = def.keys[def.keys.length - 1].t;
+  return { phased: true, rel: 2.2, end: def.phased === false ? (def.dur || last) : 3, ...def, ch, owned: Object.keys(ch) };
+}
+function sampleChannel(list, t, out, spline) {
+  const n = list.length; if (t <= list[0].t) { for (let i = 0; i < out.length; i++) out[i] = list[0].v[i]; return; }
+  if (t >= list[n - 1].t) { for (let i = 0; i < out.length; i++) out[i] = list[n - 1].v[i]; return; }
+  let k = 0; while (list[k + 1].t < t) k++;
+  const a = list[k], b = list[k + 1], u = b.e((t - a.t) / (b.t - a.t));
+  if (spline && n > 2) { const p0 = list[Math.max(0, k - 1)].v, p3 = list[Math.min(n - 1, k + 2)].v, u2 = u * u, u3 = u2 * u;
+    for (let i = 0; i < out.length; i++) out[i] = 0.5 * ((2 * a.v[i]) + (-p0[i] + b.v[i]) * u + (2 * p0[i] - 5 * a.v[i] + 4 * b.v[i] - p3[i]) * u2 + (-p0[i] + 3 * a.v[i] - 3 * b.v[i] + p3[i]) * u3);
+  } else for (let i = 0; i < out.length; i++) out[i] = a.v[i] + (b.v[i] - a.v[i]) * u;
+}
+/** mirror a lead-side clip into its rear-side twin (used for a few symmetric moves) */
+const CLIPS = {};
+const clip = (name, def) => (CLIPS[name] = makeClip({ name, ...def }));
+
+// ── punches ──────────────────────────────────────────────────────────────
+clip('jab', { rel: 2.15, keys: [
+  { t: 0.4, lh: [0.24, 0.26, 0.24], sp: [0.05, 0, 0] },
+  { t: 1.0, lha: [1, 0, 0, -0.02], lh: [0.14, 0.3, 0.62], lhr: 1.35, le: 0.45, sp: [-0.3, 0.03, -0.03], hr: [-0.1, 0.02, 0], hp: [0, -0.01, 0.05], hd: [0, 0.05, 0.04], sh: [0.12, 0], e: 'out3' },
+  { t: 1.6, lha: [1, 0, 0, 0.01], lh: [0.14, 0.3, 0.62], lhr: 1.35, le: 0.45, sp: [-0.32, 0.03, -0.03], hr: [-0.1, 0.02, 0], hp: [0, -0.01, 0.055], hd: [0, 0.05, 0.04], sh: [0.12, 0] },
+  { t: 2.5, lha: [0, 0, 0, 0], lh: [0.25, 0.28, 0.3], lhr: 0.3, le: 0.15, sp: [-0.08, 0.01, 0], hr: [0, 0, 0], hp: [0, 0, 0.01], hd: [0, 0, 0], sh: [0, 0] } ] });
+clip('cross', { rel: 2.2, keys: [
+  { t: 0.45, rh: [0.04, 0.24, 0.13], sp: [-0.12, 0.02, 0], hr: [-0.06, 0, 0], hp: [-0.02, -0.01, -0.02], lh: [0.22, 0.29, 0.2] },
+  { t: 1.0, rha: [1, 0, 0, -0.02], rh: [-0.1, 0.3, 0.64], rhr: 1.35, re: 0.45, sp: [0.72, 0.1, 0.04], hr: [0.5, 0.05, 0], hp: [0.03, -0.03, 0.1], rfr: [0.55, 0.5, 0], lh: [0.2, 0.31, 0.13], hd: [0, 0.08, -0.04], sh: [0, 0.12], e: 'out3' },
+  { t: 1.6, rha: [1, 0, 0, 0.015], rh: [-0.1, 0.3, 0.64], rhr: 1.35, re: 0.45, sp: [0.76, 0.1, 0.04], hr: [0.52, 0.05, 0], hp: [0.03, -0.03, 0.105], rfr: [0.58, 0.5, 0], lh: [0.2, 0.31, 0.13], hd: [0, 0.08, -0.04], sh: [0, 0.12] },
+  { t: 2.5, rha: [0, 0, 0, 0], rh: [0.03, 0.26, 0.26], rhr: 0.3, re: 0.15, sp: [0.2, 0.04, 0], hr: [0.15, 0.02, 0], hp: [0.01, -0.01, 0.03], rfr: [0.15, 0.15, 0], lh: [0.23, 0.28, 0.22], hd: [0, 0, 0], sh: [0, 0] } ] });
+clip('hookL', { rel: 2.2, keys: [
+  { t: 0.45, lh: [0.3, 0.24, 0.2], le: 0.6, sp: [0.22, 0.03, -0.05], hr: [0.1, 0, 0], hp: [0.03, -0.02, 0] },
+  { t: 0.8, lha: [0.45, 0.3, 0, -0.12], lh: [0.36, 0.3, 0.28], le: 1, lhr: 1.2, sp: [-0.2, 0.04, 0], hr: [-0.15, 0.01, 0], hp: [0.03, -0.03, 0.02], e: 'in' },
+  { t: 1.0, lha: [1, 0.05, 0, -0.02], lh: [0.05, 0.3, 0.38], le: 1, lhr: 1.2, sp: [-0.62, 0.05, 0.03], hr: [-0.42, 0.02, 0], lfr: [-0.5, 0.4, 0], hp: [0.02, -0.03, 0.03], hd: [0, 0.06, 0], sh: [0.14, 0], e: 'lin' },
+  { t: 1.5, lha: [0.75, -0.16, -0.02, -0.06], lh: [-0.1, 0.28, 0.3], le: 1, lhr: 1.2, sp: [-0.8, 0.06, 0.03], hr: [-0.5, 0.02, 0], lfr: [-0.55, 0.4, 0], hp: [0.02, -0.03, 0.03], hd: [0, 0.06, 0], sh: [0.14, 0], e: 'out' },
+  { t: 2.5, lha: [0, 0, 0, 0], lh: [0.2, 0.28, 0.22], le: 0.3, lhr: 0.2, sp: [-0.2, 0.02, 0], hr: [-0.12, 0, 0], lfr: [-0.1, 0.1, 0], hp: [0, 0, 0], hd: [0, 0, 0], sh: [0, 0] } ] });
+clip('hookR', { rel: 2.25, keys: [
+  { t: 0.45, rh: [-0.12, 0.24, 0.1], re: 0.6, sp: [-0.2, 0.03, 0.04], hr: [-0.1, 0, 0], hp: [-0.03, -0.02, -0.02], lh: [0.22, 0.29, 0.2] },
+  { t: 0.8, rha: [0.45, -0.32, 0, -0.12], rh: [-0.36, 0.3, 0.25], re: 1, rhr: 1.2, sp: [0.35, 0.06, 0], hr: [0.25, 0.02, 0], hp: [0, -0.03, 0.03], lh: [0.2, 0.3, 0.16], e: 'in' },
+  { t: 1.0, rha: [1, -0.05, 0, -0.02], rh: [-0.05, 0.3, 0.4], re: 1, rhr: 1.2, sp: [0.85, 0.1, -0.02], hr: [0.55, 0.04, 0], rfr: [0.6, 0.5, 0], hp: [0.04, -0.04, 0.08], lh: [0.2, 0.31, 0.13], hd: [0, 0.07, -0.03], sh: [0, 0.14], e: 'lin' },
+  { t: 1.5, rha: [0.75, 0.18, -0.02, -0.06], rh: [0.12, 0.28, 0.3], re: 1, rhr: 1.2, sp: [1.05, 0.12, -0.02], hr: [0.62, 0.04, 0], rfr: [0.65, 0.5, 0], hp: [0.04, -0.04, 0.08], lh: [0.2, 0.31, 0.13], hd: [0, 0.07, -0.03], sh: [0, 0.14], e: 'out' },
+  { t: 2.5, rha: [0, 0, 0, 0], rh: [0.02, 0.26, 0.24], re: 0.3, rhr: 0.2, sp: [0.3, 0.04, 0], hr: [0.2, 0.01, 0], rfr: [0.2, 0.15, 0], hp: [0.01, -0.01, 0.02], lh: [0.23, 0.28, 0.22], hd: [0, 0, 0], sh: [0, 0] } ] });
+clip('upperL', { rel: 2.2, keys: [
+  { t: 0.5, lh: [0.22, 0.02, 0.2], le: 0, lhr: -0.9, sp: [0.18, 0.14, -0.1], hp: [0.03, -0.09, 0], hr: [0.08, 0.03, 0] },
+  { t: 0.85, lha: [0.5, 0.02, -0.22, -0.1], lh: [0.2, 0.12, 0.3], le: 0, lhr: -1.1, sp: [-0.1, 0.06, -0.04], hp: [0.02, -0.05, 0.03], hr: [-0.1, 0, 0], e: 'in' },
+  { t: 1.0, lha: [1, 0, -0.02, -0.03], lh: [0.12, 0.34, 0.36], le: 0, lhr: -1.1, sp: [-0.4, -0.06, 0], hr: [-0.25, -0.03, 0], hp: [0.02, 0.02, 0.05], lfr: [-0.3, 0.35, 0], hd: [0, 0.04, 0], sh: [0.12, 0], e: 'lin' },
+  { t: 1.5, lha: [0.6, 0, 0.18, -0.06], lh: [0.12, 0.5, 0.3], le: 0, lhr: -1.1, sp: [-0.5, -0.1, 0], hr: [-0.3, -0.04, 0], hp: [0.02, 0.03, 0.05], lfr: [-0.3, 0.35, 0], hd: [0, 0.04, 0], sh: [0.12, 0], e: 'out' },
+  { t: 2.5, lha: [0, 0, 0, 0], lh: [0.24, 0.27, 0.24], le: 0.05, lhr: 0, sp: [-0.1, 0, 0], hr: [-0.05, 0, 0], hp: [0, 0, 0], lfr: [0, 0, 0], hd: [0, 0, 0], sh: [0, 0] } ] });
+clip('upperR', { rel: 2.25, keys: [
+  { t: 0.5, rh: [-0.08, 0.0, 0.14], re: 0, rhr: -0.9, sp: [-0.2, 0.16, 0.1], hp: [-0.03, -0.1, -0.01], hr: [-0.08, 0.03, 0], lh: [0.22, 0.3, 0.2] },
+  { t: 0.85, rha: [0.5, -0.02, -0.24, -0.1], rh: [-0.1, 0.1, 0.3], re: 0, rhr: -1.1, sp: [0.3, 0.08, 0.04], hp: [0, -0.06, 0.04], hr: [0.2, 0.01, 0], lh: [0.2, 0.31, 0.15], e: 'in' },
+  { t: 1.0, rha: [1, 0, -0.02, -0.03], rh: [-0.06, 0.34, 0.4], re: 0, rhr: -1.1, sp: [0.7, -0.04, 0], hr: [0.5, -0.02, 0], hp: [0.03, 0.02, 0.08], rfr: [0.5, 0.55, 0], lh: [0.2, 0.31, 0.13], hd: [0, 0.05, -0.03], sh: [0, 0.12], e: 'lin' },
+  { t: 1.5, rha: [0.6, 0, 0.2, -0.06], rh: [-0.04, 0.52, 0.32], re: 0, rhr: -1.1, sp: [0.82, -0.1, 0], hr: [0.55, -0.04, 0], hp: [0.03, 0.035, 0.08], rfr: [0.52, 0.55, 0], lh: [0.2, 0.31, 0.13], hd: [0, 0.05, -0.03], sh: [0, 0.12], e: 'out' },
+  { t: 2.5, rha: [0, 0, 0, 0], rh: [0.04, 0.25, 0.2], re: 0.1, rhr: 0, sp: [0.2, 0, 0], hr: [0.12, 0, 0], hp: [0, 0, 0.02], rfr: [0.15, 0.15, 0], lh: [0.23, 0.28, 0.22], hd: [0, 0, 0], sh: [0, 0] } ] });
+clip('bodyJab', { rel: 2.15, keys: [
+  { t: 0.45, lh: [0.24, 0.2, 0.24], hp: [0, -0.08, 0.02], sp: [0.04, 0.12, 0] },
+  { t: 1.0, lha: [1, 0, 0, -0.02], lh: [0.14, 0, 0.6], lhr: 1.35, le: 0.4, sp: [-0.3, 0.3, -0.05], hr: [-0.1, 0.1, 0], hp: [0, -0.17, 0.08], hd: [0, -0.14, 0.04], rh: [0.04, 0.31, 0.14], sh: [0.1, 0], e: 'out3' },
+  { t: 1.6, lha: [1, 0, 0, 0.01], lh: [0.14, 0, 0.6], lhr: 1.35, le: 0.4, sp: [-0.32, 0.3, -0.05], hr: [-0.1, 0.1, 0], hp: [0, -0.17, 0.085], hd: [0, -0.14, 0.04], rh: [0.04, 0.31, 0.14], sh: [0.1, 0] },
+  { t: 2.5, lha: [0, 0, 0, 0], lh: [0.25, 0.27, 0.3], lhr: 0.3, le: 0.15, sp: [-0.08, 0.08, 0], hr: [0, 0.02, 0], hp: [0, -0.04, 0.02], hd: [0, 0, 0], rh: [0.05, 0.27, 0.16], sh: [0, 0] } ] });
+clip('bodyCross', { rel: 2.2, keys: [
+  { t: 0.45, rh: [0.04, 0.2, 0.13], sp: [-0.12, 0.12, 0], hr: [-0.06, 0.03, 0], hp: [-0.02, -0.08, -0.01], lh: [0.22, 0.3, 0.2] },
+  { t: 1.0, rha: [1, 0, 0, -0.02], rh: [-0.1, 0, 0.62], rhr: 1.35, re: 0.4, sp: [0.72, 0.32, 0.06], hr: [0.5, 0.12, 0], hp: [0.03, -0.18, 0.12], rfr: [0.55, 0.55, 0], lh: [0.2, 0.33, 0.13], hd: [0, -0.14, -0.04], sh: [0, 0.1], e: 'out3' },
+  { t: 1.6, rha: [1, 0, 0, 0.015], rh: [-0.1, 0, 0.62], rhr: 1.35, re: 0.4, sp: [0.76, 0.32, 0.06], hr: [0.52, 0.12, 0], hp: [0.03, -0.18, 0.125], rfr: [0.58, 0.55, 0], lh: [0.2, 0.33, 0.13], hd: [0, -0.14, -0.04], sh: [0, 0.1] },
+  { t: 2.5, rha: [0, 0, 0, 0], rh: [0.03, 0.26, 0.26], rhr: 0.3, re: 0.15, sp: [0.2, 0.1, 0], hr: [0.15, 0.03, 0], hp: [0.01, -0.05, 0.03], rfr: [0.15, 0.15, 0], lh: [0.23, 0.28, 0.22], hd: [0, 0, 0], sh: [0, 0] } ] });
+clip('bodyHookL', { rel: 2.2, keys: [
+  { t: 0.45, lh: [0.3, 0.02, 0.16], le: 0.3, lhr: 0.2, sp: [0.25, 0.16, -0.12], hp: [0.04, -0.12, 0], hr: [0.1, 0.04, 0] },
+  { t: 0.8, lha: [0.45, 0.28, -0.02, -0.12], lh: [0.34, 0, 0.26], le: 0.5, lhr: 0.2, sp: [-0.15, 0.18, -0.1], hp: [0.03, -0.13, 0.03], hr: [-0.12, 0.05, 0], e: 'in' },
+  { t: 1.0, lha: [1, 0.05, 0, -0.02], lh: [0.06, 0.02, 0.36], le: 0.5, lhr: 0.2, sp: [-0.6, 0.2, -0.08], hr: [-0.4, 0.06, 0], hp: [0.02, -0.13, 0.04], lfr: [-0.5, 0.4, 0], hd: [0, -0.08, 0], e: 'lin' },
+  { t: 1.5, lha: [0.7, -0.14, 0, -0.06], lh: [-0.08, 0.02, 0.3], le: 0.5, lhr: 0.2, sp: [-0.76, 0.2, -0.08], hr: [-0.48, 0.06, 0], hp: [0.02, -0.13, 0.04], lfr: [-0.55, 0.4, 0], hd: [0, -0.08, 0], e: 'out' },
+  { t: 2.5, lha: [0, 0, 0, 0], lh: [0.22, 0.24, 0.22], le: 0.2, lhr: 0, sp: [-0.2, 0.06, 0], hr: [-0.1, 0.01, 0], hp: [0, -0.04, 0], lfr: [-0.1, 0.1, 0], hd: [0, 0, 0] } ] });
+clip('bodyHookR', { rel: 2.25, keys: [
+  { t: 0.45, rh: [-0.14, 0.02, 0.08], re: 0.3, rhr: 0.2, sp: [-0.2, 0.16, 0.1], hp: [-0.03, -0.12, -0.02], hr: [-0.1, 0.04, 0], lh: [0.22, 0.3, 0.2] },
+  { t: 0.8, rha: [0.45, -0.3, -0.02, -0.12], rh: [-0.34, 0, 0.24], re: 0.5, rhr: 0.2, sp: [0.3, 0.2, 0.08], hp: [0, -0.13, 0.04], hr: [0.22, 0.05, 0], lh: [0.2, 0.31, 0.16], e: 'in' },
+  { t: 1.0, rha: [1, -0.05, 0, -0.02], rh: [-0.06, 0.02, 0.38], re: 0.5, rhr: 0.2, sp: [0.82, 0.24, 0.06], hr: [0.55, 0.07, 0], hp: [0.04, -0.14, 0.09], rfr: [0.6, 0.5, 0], lh: [0.2, 0.32, 0.13], hd: [0, -0.08, -0.03], e: 'lin' },
+  { t: 1.5, rha: [0.7, 0.16, 0, -0.06], rh: [0.1, 0.02, 0.3], re: 0.5, rhr: 0.2, sp: [1.0, 0.24, 0.06], hr: [0.62, 0.07, 0], hp: [0.04, -0.14, 0.09], rfr: [0.65, 0.5, 0], lh: [0.2, 0.32, 0.13], hd: [0, -0.08, -0.03], e: 'out' },
+  { t: 2.5, rha: [0, 0, 0, 0], rh: [0.03, 0.24, 0.22], re: 0.2, rhr: 0, sp: [0.3, 0.08, 0], hr: [0.2, 0.02, 0], hp: [0.01, -0.04, 0.02], rfr: [0.2, 0.15, 0], lh: [0.23, 0.28, 0.22], hd: [0, 0, 0] } ] });
+// ── kicks ────────────────────────────────────────────────────────────────
+clip('teepL', { rel: 2.3, keys: [
+  { t: 0.5, lfo: 1, lf: [0.1, 0.62, 0.3], lfr: [0, -0.5, 0], lk: [0, 0.6, 0.3], hp: [-0.04, 0.0, -0.05], hr: [0.1, -0.1, 0], sp: [0.05, -0.02, 0.05], rfr: [0, 0.15, 0], lh: [0.22, 0.22, 0.2], e: 'out' },
+  { t: 1.0, lfo: 1, lfa: [1, 0, 0.02, -0.04], lf: [0.06, 1.0, 0.95], lfr: [0, -1.3, 0], lk: [0, 0.4, 0.3], hp: [-0.03, 0.01, 0.06], hr: [0.15, -0.28, 0], sp: [0.05, -0.18, 0.06], rfr: [-0.2, 0.3, 0], lh: [0.24, 0.14, 0.12], rh: [0.03, 0.3, 0.14], hd: [0, 0.2, 0], e: 'out3' },
+  { t: 1.6, lfo: 1, lfa: [1, 0, 0.02, 0.03], lf: [0.06, 1.0, 0.95], lfr: [0, -1.3, 0], lk: [0, 0.4, 0.3], hp: [-0.03, 0.01, 0.07], hr: [0.15, -0.28, 0], sp: [0.05, -0.18, 0.06], rfr: [-0.2, 0.3, 0], lh: [0.24, 0.14, 0.12], rh: [0.03, 0.3, 0.14], hd: [0, 0.2, 0] },
+  { t: 2.4, lfo: 1, lfa: [0, 0, 0, 0], lf: [0.1, 0.5, 0.36], lfr: [0, -0.3, 0], lk: [0, 0.5, 0.3], hp: [-0.03, 0, 0], hr: [0.06, -0.08, 0], sp: [0, -0.04, 0.03], rfr: [0, 0.1, 0], lh: [0.24, 0.24, 0.22], hd: [0, 0.05, 0] } ] });
+clip('lowKickL', { rel: 2.3, keys: [
+  { t: 0.45, lfo: 1, lf: [0.26, 0.16, 0.2], lfr: [0.2, 0.5, 0.3], lk: [0.7, 0, 0], hp: [-0.05, 0, -0.03], hr: [-0.1, 0, 0.04], sp: [0.12, 0, -0.08], rfr: [0, 0.1, 0], e: 'out' },
+  { t: 1.0, lfo: 1, lfa: [1, -0.06, 0, 0.02], lf: [0, 0.3, 0.8], lfr: [-0.7, 0.5, 1.2], lk: [0.5, 0, 0.3], hp: [-0.05, 0, 0.03], hr: [-0.5, 0, 0.1], sp: [0.3, -0.05, -0.16], rfr: [-0.35, 0.2, 0], lh: [0.3, 0.12, 0.1], rh: [0.03, 0.3, 0.14], e: 'in' },
+  { t: 1.5, lfo: 1, lfa: [0.85, -0.2, 0, 0.0], lf: [-0.1, 0.3, 0.75], lfr: [-0.8, 0.5, 1.2], lk: [0.4, 0, 0.3], hp: [-0.05, 0, 0.03], hr: [-0.56, 0, 0.1], sp: [0.32, -0.05, -0.16], rfr: [-0.38, 0.2, 0], lh: [0.3, 0.12, 0.1], rh: [0.03, 0.3, 0.14], e: 'out' },
+  { t: 2.4, lfo: 1, lfa: [0, 0, 0, 0], lf: [0.14, 0.14, 0.3], lfr: [-0.2, 0.4, 0.2], lk: [0.3, 0, 0], hp: [-0.03, 0, 0], hr: [-0.1, 0, 0.02], sp: [0.05, 0, -0.04], rfr: [-0.05, 0.05, 0], lh: [0.24, 0.26, 0.24] } ] });
+const roundR = (h, lean, roll, yawEnd) => ({ rel: 2.3, keys: [
+  { t: 0.42, rfo: 1, rf: [-0.32, 0.22 + h * 0.3, -0.06], rfr: [-0.5, 0.6, -0.4], rk: [-1.0, 0.2 + h * 0.5, 0.2], hp: [0.04, -0.02, 0.02], hr: [0.3, 0, 0.05 + roll * 0.3], sp: [0.08, -0.02, 0.08 + lean * 0.3], lfr: [0.5, 0.15, 0], rh: [-0.16, 0.14, 0.02], lh: [0.22, 0.3, 0.2], e: 'out' },
+  { t: 0.8, rfo: 1, rfa: [0.5, -0.42, 0.04, -0.24], rf: [-0.4, 0.35 + h * 0.6, 0.35], rfr: [0.1, 0.4, -1.1], rk: [-1.0, 0.2 + h, 0.5], hp: [0.05, -0.02, 0.05], hr: [0.75, 0, 0.1 + roll * 0.7], sp: [-0.1, -0.04, 0.16 + lean * 0.7], lfr: [0.9, 0.22, 0], rh: [-0.3, -0.06, -0.1], re: 0.3, lh: [0.2, 0.32, 0.16], e: 'in' },
+  { t: 1.0, rfo: 1, rfa: [1, 0.08, 0, 0.04], rf: [0.1, 0.4 + h, 0.8], rfr: [yawEnd, 0.3, -1.35], rk: [-0.5, 0.2 + h * 1.2, 0.8], hp: [0.06, 0.015 + h * 0.03, 0.07], hr: [1.05, 0, 0.14 + roll], sp: [-0.26, -0.06, 0.22 + lean], lfr: [1.15, 0.28, 0], rh: [-0.36, -0.22, -0.2], re: 0.3, lh: [0.2, 0.33, 0.14], hd: [0, 0.05, -lean * 0.4], e: 'lin' },
+  { t: 1.5, rfo: 1, rfa: [0.85, 0.26, -0.02, 0.06], rf: [0.3, 0.38 + h, 0.75], rfr: [yawEnd + 0.15, 0.3, -1.35], rk: [-0.4, 0.2 + h * 1.2, 0.8], hp: [0.06, 0.015 + h * 0.03, 0.07], hr: [1.15, 0, 0.14 + roll], sp: [-0.3, -0.06, 0.22 + lean], lfr: [1.22, 0.28, 0], rh: [-0.38, -0.24, -0.22], re: 0.3, lh: [0.2, 0.33, 0.14], hd: [0, 0.05, -lean * 0.4], e: 'out' },
+  { t: 2.4, rfo: 1, rfa: [0, 0, 0, 0], rf: [-0.22, 0.26 + h * 0.3, 0.02], rfr: [-0.4, 0.5, -0.3], rk: [-0.7, 0.2, 0.3], hp: [0.03, -0.01, 0.01], hr: [0.3, 0, 0.04], sp: [0, 0, 0.06], lfr: [0.35, 0.1, 0], rh: [-0.04, 0.2, 0.1], re: 0.1, lh: [0.22, 0.29, 0.2], hd: [0, 0, 0] } ] });
+clip('lowKickR', roundR(0.0, 0.04, 0.02, 0.9));
+clip('bodyKickR', roundR(0.55, 0.3, 0.2, 0.7));
+clip('headKickR', roundR(1.05, 0.55, 0.36, 0.6));
+
+// ───────────────────────── 11_anim.js ─────────────────────────
+/* ═══════════════════════════ ANIMATOR ═══════════════════════════
+   Layers, bottom to top:
+     stance (per-fighter posture, guard blend, fatigue)  →  locomotion (procedural footwork: feet
+     plant in world space and step to catch the body, so there is no skating)  →  action clip
+     (blended in from whatever the body was doing; hands back to the stance on release)  →
+     additive springs (hit reactions, breathing, sway)  →  IK solve. */
+const STYLE0 = { stanceW: 0.14, stanceL: 0.23, leadYaw: -0.15, rearYaw: -0.85, crouch: 0.07, blade: -0.48, twist: -0.14, lean: 0.13,
+  lh: [0.24, 0.27, 0.25], rh: [0.05, 0.25, 0.17], le: 0.05, re: 0.1, bounce: 0.006, bounceHz: 2.0, sway: 0.008, swayHz: 0.55, headMove: 0.02, stepDur: 0.2, stepThr: 0.1, guardTight: 0 };
+const POS_CH = { lh: 1, rh: 1, hp: 1, lf: 1, rf: 1 }, AIM_CH = { lha: 1, rha: 1, lfa: 1, rfa: 1 };
+
+class Animator {
+  constructor(model, styleIn) {
+    this.model = model; this.rig = new Rig(model); const st = this.style = { ...STYLE0, ...styleIn }, s = this.s = model.sk.s;
+    this.side = model.def.stance === 'southpaw' ? -1 : 1;
+    this.base = newPose(); this.pose = newPose(); this.from = newPose(); this.tgt = newPose(); this.gp = newPose();
+    const mk = o => { const p = newPose(); setPose(p, o); for (const c in POS_CH) for (let i = 0; i < 3; i++) p[c][i] *= s; return p; };
+    const idle = { hp: [0, -st.crouch, 0], hr: [st.blade, 0.04, 0], sp: [st.twist, st.lean, 0], hd: [0, 0.05, 0], lh: st.lh, rh: st.rh, le: st.le, re: st.re };
+    const g = st.guardTight;
+    this.stance = { idle: mk(idle),
+      mid: mk({ ...idle, hp: [0, -st.crouch - 0.03, 0], sp: [st.twist, st.lean + 0.06, 0], hd: [0, 0.12, 0], lh: [0.2 - g * 0.03, 0.31, 0.19], rh: [0.03, 0.3, 0.15], le: 0, re: 0.05, sh: [0.06, 0.06] }),
+      high: mk({ ...idle, hp: [0, -st.crouch - 0.04, 0], sp: [st.twist * 0.6, st.lean + 0.1, 0], hd: [0, 0.2, 0], lh: [0.13, 0.42, 0.15], rh: [-0.03, 0.42, 0.13], le: 0, re: 0, sh: [0.15, 0.15] }),
+      low: mk({ ...idle, hp: [0, -st.crouch - 0.1, 0], sp: [st.twist, st.lean + 0.2, 0], hd: [0, -0.04, 0], lh: [0.14, 0.04, 0.2], rh: [-0.02, 0.2, 0.17], le: 0.1, re: 0.05 }) };
+    this.home = [V3(st.stanceW * s, 0, st.stanceL * s), V3(-st.stanceW * s, 0, -st.stanceL * s)]; this.homeYaw = [st.leadYaw, st.rearYaw];
+    this.feet = [0, 1].map(() => ({ pos: V3(), yaw: 0, stepping: false, t: 0, dur: 0.2, from: V3(), fromYaw: 0, h: 0, lift: 0, off: V3(), forced: 0 }));
+    this.root = V3(); this.yaw = 0; this.vel = V3(); this.guardW = 0; this.guardLvl = 0; this.gW = 0; this.gL = 0; this.fatigue = 0; this.wobble = 0; this.noStep = 0; this.stepCool = 0; this.settle = 0;
+    this.layer = { clip: null, time: 0, tp: 0, s: 1, blendIn: 0.06, phases: null, speed: 1, hold: false, evI: 0 };
+    this.sp = { hy: new Spring(4.2, 0.42), hp: new Spring(4.2, 0.42), hr: new Spring(4, 0.42), st: new Spring(3.4, 0.5), sb: new Spring(3.4, 0.5), ss: new Spring(3.4, 0.5), px: new Spring(3, 0.62), py: new Spring(3.2, 0.55), pz: new Spring(3, 0.62) };
+    this.aimW = { lh: V3(), rh: V3(), lf: V3(), rf: V3(), look: V3(0, 1.6, 3) };
+    this.t = Math.random() * 10; this.bph = Math.random() * TAU; this.bnc = Math.random() * TAU; this.shake = 0; this.height = 1; this.onStep = null; this.onEvent = null;
+    this.tmp = new Float32Array(4); this.placeFeet();
+  }
+  placeFeet() { const g = this.model.group; g.position.copy(this.root); g.rotation.y = this.yaw; g.updateMatrix(); g.matrixWorld.copy(g.matrix);
+    for (let i = 0; i < 2; i++) { const f = this.feet[i]; f.pos.copy(this.home[i]).applyMatrix4(g.matrixWorld); f.pos.y = 0; f.yaw = this.yaw + this.side * this.homeYaw[i]; f.stepping = false; f.lift = 0; } }
+  /** start a clip. opt.phases = [startup, active, recovery] seconds for strike clips */
+  play(name, opt = {}) {
+    const c = typeof name === 'string' ? CLIPS[name] : name, L = this.layer; if (!c) { console.warn('missing clip', name); return; }
+    copyPose(this.from, this.pose); L.clip = c; L.time = 0; L.tp = 0; L.s = 0; L.blendIn = opt.blendIn ?? 0.07; L.phases = opt.phases || null; L.speed = opt.speed || 1; L.hold = !!opt.hold; L.evI = 0; L.dur = opt.dur || c.dur || c.end;
+    this.noStep = (c.ch.lfo || c.ch.rfo || c.lockFeet) ? 1 : 0;
+  }
+  stop(blend = 0.16) { const L = this.layer; if (!L.clip) return; copyPose(this.from, this.pose); L.clip = null; L.s = 0; L.blendIn = blend; this.noStep = 0; }
+  get playing() { return this.layer.clip; }
+  get tp() { return this.layer.tp; }
+  /** stretch the current phase (used when a strike whiffs or is blocked) */
+  setPhases(ph) { this.layer.phases = ph; }
+  impulse(o) { const S = this.sp; if (o.head) { S.hy.kick(o.head[0]); S.hp.kick(o.head[1]); S.hr.kick(o.head[2]); } if (o.spine) { S.st.kick(o.spine[0]); S.sb.kick(o.spine[1]); S.ss.kick(o.spine[2]); } if (o.hips) { S.px.kick(o.hips[0]); S.py.kick(o.hips[1]); S.pz.kick(o.hips[2]); } }
+  /** force a step: foot i lands at home + (dx,dz) in root space */
+  step(i, dx = 0, dz = 0, dur = 0.16, h = 0.04) { const f = this.feet[i]; f.stepping = true; f.t = 0; f.dur = dur; f.from.copy(f.pos); f.fromYaw = f.yaw; f.h = h; f.off.set(dx, 0, dz); f.forced = 1; }
+  update(dt) {
+    const st = this.style, g = this.model.group, s = this.s, rig = this.rig, L = this.layer, P = this.pose; this.t += dt;
+    g.position.copy(this.root); g.rotation.y = this.yaw; g.updateMatrix(); g.matrixWorld.copy(g.matrix);
+    // ── footwork ──────────────────────────────────────────────────────────
+    const vx = this.vel.x, vz = this.vel.z, spd = Math.hypot(vx, vz); this.settle = spd < 0.12 ? this.settle + dt : 0; this.stepCool -= dt;
+    const F = this.feet, hw = Animator._hw, err = [0, 0], yerr = [0, 0];
+    for (let i = 0; i < 2; i++) { hw[i].copy(this.home[i]).add(F[i].off).applyMatrix4(g.matrixWorld); hw[i].y = 0; hw[i].x += vx * 0.09; hw[i].z += vz * 0.09;
+      err[i] = Math.hypot(hw[i].x - F[i].pos.x, hw[i].z - F[i].pos.z); yerr[i] = Math.abs(wrapPi(this.yaw + this.side * this.homeYaw[i] - F[i].yaw)); }
+    if (!F[0].stepping && !F[1].stepping && this.stepCool <= 0 && !this.noStep) {
+      const thr = (spd > 0.15 || this.settle < 0.3 ? st.stepThr : 0.035) * s, c0 = err[0] > thr || yerr[0] > 0.4, c1 = err[1] > thr || yerr[1] > 0.4; let pick = -1;
+      if (c0 && c1) pick = spd > 0.1 ? ((vx * (hw[0].x - hw[1].x) + vz * (hw[0].z - hw[1].z)) > 0 ? 0 : 1) : (err[0] + yerr[0] * 0.2 > err[1] + yerr[1] * 0.2 ? 0 : 1); else if (c0) pick = 0; else if (c1) pick = 1;
+      if (pick >= 0) { const f = F[pick]; f.stepping = true; f.t = 0; f.from.copy(f.pos); f.fromYaw = f.yaw; f.dur = st.stepDur * clamp(1.15 - spd * 0.22, 0.62, 1.1) * (0.9 + 0.2 * this.fatigue); f.h = (0.022 + 0.05 * clamp01(err[pick] / (0.3 * s))) * s; }
+    }
+    for (let i = 0; i < 2; i++) { const f = F[i]; if (!f.stepping) { f.lift = 0; continue; }
+      f.t += dt / f.dur; const u = Ease.io(Math.min(1, f.t)), lead = (1 - u) * f.dur * 0.5;
+      f.pos.x = lerp(f.from.x, hw[i].x + vx * lead, u); f.pos.z = lerp(f.from.z, hw[i].z + vz * lead, u); f.lift = Math.sin(PI * Math.min(1, f.t)) * f.h;
+      f.yaw = f.fromYaw + wrapPi(this.yaw + this.side * this.homeYaw[i] - f.fromYaw) * u;
+      if (f.t >= 1) { f.stepping = false; f.lift = 0; f.forced = 0; this.stepCool = 0.015; if (this.onStep) this.onStep(i, f.h); } }
+    // feet → root space
+    const inv = Animator._inv.copy(g.matrixWorld).invert(), c = Animator._c.set(0, 0, 0);
+    for (let i = 0; i < 2; i++) { const rf = rig.foot[i]; rf.ball.copy(F[i].pos).applyMatrix4(inv); rf.ball.y = F[i].lift; rf.yaw = this.side * wrapPi(F[i].yaw - this.yaw); c.x += rf.ball.x * 0.5; c.z += rf.ball.z * 0.5; }
+    // ── stance layer ──────────────────────────────────────────────────────
+    this.gW = damp(this.gW, this.guardW, 22, dt); this.gL = damp(this.gL, this.guardLvl, 16, dt);
+    const B = this.base, S = this.stance, fat = this.fatigue, wob = this.wobble;
+    if (this.gW > 0.002) { lerpPose(this.gp, S.mid, this.gL >= 0 ? S.high : S.low, Math.abs(this.gL)); lerpPose(B, S.idle, this.gp, this.gW); } else copyPose(B, S.idle);
+    const stepU = F[0].stepping ? Math.sin(PI * Math.min(1, F[0].t)) : F[1].stepping ? Math.sin(PI * Math.min(1, F[1].t)) : 0, sup = F[0].stepping ? 1 : 0;
+    this.bnc += dt * TAU * st.bounceHz * (1 - 0.4 * fat); this.bph += dt * TAU * (0.3 + 0.55 * fat);
+    const bn = st.bounce * (1 - 0.75 * fat) * (1 - this.gW * 0.5), bs = Math.sin(this.bnc), br = Math.sin(this.bph), ba = 0.012 + 0.03 * fat;
+    const sw = Math.sin(this.t * TAU * st.swayHz), sw2 = Math.sin(this.t * TAU * st.swayHz * 0.63 + 1.3);
+    B.hp[0] += c.x * 0.45 + (rig.foot[sup].ball.x - c.x) * 0.22 * stepU + st.sway * s * sw;
+    B.hp[2] += c.z * 0.45 + (rig.foot[sup].ball.z - c.z) * 0.22 * stepU + st.sway * 0.6 * s * sw2;
+    B.hp[1] += (bn * bs - 0.012 * stepU + 0.02 * fat - 0.035 * wob) * s + br * ba * 0.25 * s;
+    const lvx = (vx * Math.cos(this.yaw) - vz * Math.sin(this.yaw)) * this.side, lvz = vx * Math.sin(this.yaw) + vz * Math.cos(this.yaw);
+    B.sp[1] += clamp(lvz * 0.04, -0.07, 0.09) + br * ba + 0.1 * fat + 0.1 * wob; B.sp[2] += clamp(lvx * 0.05, -0.08, 0.08) - st.sway * 2.5 * sw + 0.13 * wob * Math.sin(this.t * 4.3);
+    B.sp[0] += st.sway * 2 * sw2;
+    B.sh[0] += Math.max(0, br) * ba * 1.6; B.sh[1] += Math.max(0, br) * ba * 1.6;
+    B.hd[1] += 0.1 * fat + 0.12 * wob; B.hd[0] += st.headMove * Math.sin(this.t * 1.9) * (1 - this.gW); B.hd[2] += st.headMove * 0.8 * sw + 0.16 * wob * Math.sin(this.t * 3.1);
+    B.lh[1] -= (0.07 * fat + 0.12 * wob) * s * (1 - this.gW * 0.6) - bn * bs * 0.5 * s; B.rh[1] -= (0.05 * fat + 0.1 * wob) * s * (1 - this.gW * 0.6) - bn * bs * 0.5 * s;
+    B.hp[0] += 0.05 * wob * s * Math.sin(this.t * 5.1); B.hp[2] += 0.04 * wob * s * Math.sin(this.t * 3.7 + 1);
+    const heel = clamp01(bn * 60) * (0.5 + 0.5 * bs) * 0.16; B.lfr[1] += heel; B.rfr[1] += heel + 0.1;
+    // ── action layer ──────────────────────────────────────────────────────
+    if (L.clip) {
+      L.time += dt * L.speed; const cl = L.clip;
+      if (cl.phased && L.phases) { const [a, b, r] = L.phases, t = L.time; L.tp = t < a ? t / a : t < a + b ? 1 + (t - a) / b : 2 + (t - a - b) / r; } else L.tp = cl.phased ? L.time / L.dur * cl.end : L.time;
+      if (cl.events) while (L.evI < cl.events.length && cl.events[L.evI].t <= L.tp) { const ev = cl.events[L.evI++]; if (ev.step) this.step(ev.step[0], ev.step[1] * s, ev.step[2] * s, ev.step[3], (ev.step[4] || 0.04) * s); if (this.onEvent) this.onEvent(ev); }
+      if (L.tp >= cl.end) { if (L.hold) L.tp = cl.end; else { L.clip = null; this.noStep = 0; } }
+    }
+    L.s = Math.min(1, L.s + dt / Math.max(0.001, L.blendIn));
+    if (L.clip || L.s < 1) {
+      const sm = smooth(L.s), cl = L.clip, rel = cl && !L.hold ? sstep(cl.rel, cl.end, L.tp) : 0, T = this.tgt;
+      for (const ch of CH_NAMES) { const out = P[ch], b = B[ch], fr = this.from[ch], list = cl && cl.ch[ch];
+        if (list) { const t = T[ch]; sampleChannel(list, L.tp, t, SPLINE[ch]);
+          if (POS_CH[ch]) { t[0] *= s; t[1] *= s; t[2] *= s; } else if (AIM_CH[ch]) { t[1] *= s; t[2] *= s; t[3] *= s; }
+          if (ADDITIVE[ch]) for (let i = 0; i < t.length; i++) t[i] += b[i];
+          if (L.tp < list[0].t) { const u = list[0].e(L.tp / list[0].t); for (let i = 0; i < t.length; i++) t[i] = lerp(b[i], t[i], u); }   // ease in from the stance to the first key
+          for (let i = 0; i < out.length; i++) out[i] = lerp(fr[i], lerp(t[i], b[i], rel), sm);
+        } else for (let i = 0; i < out.length; i++) out[i] = lerp(fr[i], b[i], sm); }
+    } else copyPose(P, B);
+    // ── additive reactions ────────────────────────────────────────────────
+    const Sp = this.sp; for (const k in Sp) Sp[k].step(dt);
+    const sh = this.shake > 0 ? Math.sin(this.t * 190) * this.shake : 0;
+    this.out = this.out || newPose(); const O = copyPose(this.out, P);
+    O.hd[0] += Sp.hy.x; O.hd[1] += Sp.hp.x; O.hd[2] += Sp.hr.x; O.sp[0] += Sp.st.x; O.sp[1] += Sp.sb.x; O.sp[2] += Sp.ss.x; O.hp[0] += Sp.px.x * s + sh; O.hp[1] += Sp.py.x * s; O.hp[2] += Sp.pz.x * s;
+    // aim points → root space
+    for (const k in this.aimW) rig.aim[k].copy(this.aimW[k]).applyMatrix4(inv);
+    rig.solve(O);
+  }
+  /** rig landmark → world space */
+  pt(name, out) { return out.copy(this.rig.P[name]).applyMatrix4(this.model.group.matrixWorld); }
+  /** root-space direction → world */
+  dir(x, y, z, out) { return out.set(x * this.side, y, z).applyAxisAngle(UP, this.yaw); }
+  resetSprings() { for (const k in this.sp) { this.sp[k].x = 0; this.sp[k].v = 0; } }
+}
+Animator._hw = [V3(), V3()]; Animator._inv = new THREE.Matrix4(); Animator._c = V3();
+
 // ───────────────────────── 22_game.js ─────────────────────────
 /* ═══════════════════════════ BOOT (temporary viewer) ═══════════════════════════ */
 Gfx.init();
@@ -1076,16 +1433,37 @@ IA.Gfx = Gfx;
   const def = ROSTER.find(r => r.id === (QS.get('f') || 'vale')) || ROSTER[0];
   const t0 = performance.now(); const fm = new FighterModel(def); IA.fm = fm; IA.buildMs = performance.now() - t0;
   Gfx.scene.add(fm.group);
+  const an = IA.an = new Animator(fm, def.style);
   const floor = new THREE.Mesh(new THREE.CircleGeometry(6, 48), new THREE.ShadowMaterial({ opacity: 0.5 })); floor.rotation.x = -PI / 2; floor.receiveShadow = true; Gfx.scene.add(floor);
   const bg = new THREE.Mesh(new THREE.CircleGeometry(6, 48), new THREE.MeshBasicMaterial({ color: 0x3a3c42 })); bg.rotation.x = -PI / 2; bg.position.y = -0.002; Gfx.scene.add(bg);
+  const dummy = new THREE.Group(); const dm = new THREE.MeshBasicMaterial({ color: 0x6a7388, transparent: true, opacity: 0.45 });
+  const dh = new THREE.Mesh(new THREE.SphereGeometry(0.105, 16, 12), dm), dbody = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.42, 6, 12), dm), dl = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.7, 6, 12), dm);
+  dummy.add(dh, dbody, dl); dummy.visible = false; Gfx.scene.add(dummy);
   Gfx.renderer.setClearColor(0x24262b, 1);
-  IA.dbg.sheet = (views, cols, cw, ch) => {
-    let cv = document.getElementById('sheet'); if (!cv) { cv = document.createElement('canvas'); cv.id = 'sheet'; cv.style.cssText = 'position:fixed;left:0;top:0;z-index:50'; document.body.appendChild(cv); }
-    const rows = Math.ceil(views.length / cols); cv.width = cols * cw; cv.height = rows * ch; const c = cv.getContext('2d');
-    views.forEach((v, i) => { fm.group.rotation.y = v.rot || 0; Gfx.camera.fov = v.fov || 30; Gfx.camera.aspect = cw / ch; Gfx.camera.updateProjectionMatrix(); Gfx.camera.position.set(...v.pos); Gfx.camera.lookAt(...v.at);
-      if (v.key) Gfx.L.uKeyDir.value.set(...v.key).normalize();
-      Gfx.render(0); c.drawImage(Gfx.renderer.domElement, (i % cols) * cw, Math.floor(i / cols) * ch, cw, ch); });
-    return [cv.width, cv.height];
+  const cell = (cv, c, i, cols, cw, ch, v) => { Gfx.camera.fov = v.fov || 30; Gfx.camera.aspect = cw / ch; Gfx.camera.updateProjectionMatrix(); Gfx.camera.position.set(...v.pos); Gfx.camera.lookAt(...v.at);
+    Gfx.render(0); c.drawImage(Gfx.renderer.domElement, (i % cols) * cw, Math.floor(i / cols) * ch, cw, ch); };
+  const sheetCv = (w, h) => { let cv = document.getElementById('sheet'); if (!cv) { cv = document.createElement('canvas'); cv.id = 'sheet'; cv.style.cssText = 'position:fixed;left:0;top:0;z-index:50'; document.body.appendChild(cv); } cv.width = w; cv.height = h; return cv; };
+  IA.dbg.sheet = (views, cols, cw, ch, posed) => {
+    const cv = sheetCv(cols * cw, Math.ceil(views.length / cols) * ch), c = cv.getContext('2d');
+    if (posed) for (let i = 0; i < 60; i++) an.update(1 / 60);
+    views.forEach((v, i) => { if (posed) { an.yaw = v.rot || 0; an.placeFeet(); an.update(0.001); } else fm.group.rotation.y = v.rot || 0; cell(cv, c, i, cols, cw, ch, v); });
+  };
+  /** filmstrip of a clip at the given phase times */
+  IA.dbg.film = (name, tps, o = {}) => {
+    const D = o.dist || 0.98, s = fm.sk.s, tgt = { head: [0, 1.6 * s, D], body: [0, 1.14 * s, D], leg: [0.1, 0.52 * s, D - 0.05], calf: [0.1, 0.3 * s, D - 0.05] }[o.aim || 'head'];
+    dummy.visible = true; dh.position.set(0, 1.6 * s, D + 0.1); dbody.position.set(0, 1.15 * s, D + 0.14); dl.position.set(0.1, 0.45 * s, D + 0.02);
+    an.root.set(0, 0, 0); an.yaw = 0; an.vel.set(0, 0, 0); an.stop(0); an.placeFeet(); an.resetSprings();
+    for (const k of ['lh', 'rh', 'lf', 'rf']) an.aimW[k].set(...tgt); an.aimW.look.set(0, 1.6 * s, D);
+    for (let i = 0; i < 90; i++) an.update(1 / 60);
+    const views = o.views || [{ pos: [-4.6, 1.25, 0.4], at: [0, 1.0, 0.4], fov: 26 }], cw = o.cw || 250, ch = o.ch || 400;
+    const cv = sheetCv(tps.length * cw, views.length * ch), c = cv.getContext('2d'); let started = false;
+    tps.forEach((tp, i) => {
+      if (tp >= 0 && !started) { an.play(name, { phases: o.phases || [0.2, 0.08, 0.3], dur: o.dur }); started = true; }
+      let guard = 0; while (started && an.layer.clip && an.layer.tp < tp && guard++ < 2000) an.update(1 / 240);
+      if (!an.layer.clip && started) for (let k = 0; k < 30; k++) an.update(1 / 60);
+      an.update(1e-5);
+      views.forEach((v, j) => cell(cv, c, i + j * tps.length, tps.length, cw, ch, v));
+    });
   };
   IA.ready = true;
 }
