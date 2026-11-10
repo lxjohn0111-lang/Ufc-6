@@ -1,0 +1,6 @@
+:root{--ink:#0e0f12;--char:#17191d;--char2:#22252b;--gold:#c9a45c;--gold2:#e8c987;--bone:#efe9dc;--steel:#8b9099;--red:#c8452f;
+--fd:"Barlow Condensed","Avenir Next Condensed","Roboto Condensed","DIN Condensed","Arial Narrow",Impact,sans-serif;--fb:"Barlow","Avenir Next","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--ink);color:var(--bone);font-family:var(--fb);overscroll-behavior:none;touch-action:none;user-select:none;-webkit-user-select:none}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+#ui{position:fixed;inset:0;pointer-events:none}
