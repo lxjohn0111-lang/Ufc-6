@@ -26,7 +26,7 @@ const Cam = {
       const focus = this.mode === 'ko' && this.focus ? this.focus : null;
       const mx = (a.pos.x + b.pos.x) / 2, mz = (a.pos.z + b.pos.z) / 2;
       let d = clamp(3.0 + sep * 1.3, 4.15, 6.8) * wide, h = 1.36 + (d / wide - 4.15) * 0.14, ty = hy - 0.03;
-      if (focus) { this.orbit += dt * 0.22; T.set(lerp(mx, focus.pos.x, 0.7), focus.down ? 0.5 : 1.05, lerp(mz, focus.pos.z, 0.7)); d = 3.5 * wide; h = 0.95; this.yaw += dt * 0.22; }
+      if (focus) { T.set(lerp(mx, focus.pos.x, 0.55), focus.down ? 0.74 : 1.02, lerp(mz, focus.pos.z, 0.55)); d = Math.max(4.2, d * 0.92) * wide; h = 1.22; this.yaw += dt * 0.1; }   // stay side-on so the fallen fighter and the one standing both read
       else T.set(mx, ty, mz);
       const ox = Math.sin(this.yaw), oz = Math.cos(this.yaw);
       P.set(T.x + ox * d, h, T.z + oz * d);

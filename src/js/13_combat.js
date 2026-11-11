@@ -25,12 +25,12 @@ mv('headKickL', { name: 'Lead High Kick', limb: 'lf', lvl: 'head', kind: 'round'
 // signature moves
 mv('superman',  { name: 'Superman Punch', limb: 'rh', lvl: 'head', kind: 'straight', su: 0.34, ac: 0.08, rc: 0.44, dmg: 16, st: 15, dz: 25, hs: 0.4,  bs: 0.2,  gd: 16, push: 1.6, adv: 0.9, reach: 1.04, heavy: 2, lin: 1, high: 1, sig: 1 });
 mv('overhand',  { name: 'Overhand',       limb: 'rh', lvl: 'head', kind: 'hook',     su: 0.30, ac: 0.08, rc: 0.46, dmg: 18, st: 14, dz: 28, hs: 0.42, bs: 0.22, gd: 22, push: 1.3, adv: 0.3, reach: 0.96, heavy: 2, high: 1, sig: 1 });
-mv('spinFist',  { name: 'Spinning Backfist', limb: 'rh', lvl: 'head', kind: 'spin',  su: 0.36, ac: 0.08, rc: 0.46, dmg: 15, st: 14, dz: 26, hs: 0.4,  bs: 0.2,  gd: 16, push: 1.1, adv: 0.15, reach: 1.0, heavy: 2, high: 1, sig: 1 });
-mv('spinKick',  { name: 'Spinning Back Kick', limb: 'rf', lvl: 'body', kind: 'spin', su: 0.38, ac: 0.08, rc: 0.50, dmg: 17, st: 16, hs: 0.42, bs: 0.24, gd: 18, push: 3.0, reach: 1.04, heavy: 2, lin: 1, sig: 1 });
+mv('spinFist',  { name: 'Spinning Backfist', limb: 'rh', lvl: 'head', kind: 'spin',  su: 0.30, ac: 0.08, rc: 0.42, dmg: 16, st: 14, dz: 26, hs: 0.4,  bs: 0.2,  gd: 16, push: 1.1, adv: 0.15, reach: 1.0, heavy: 2, high: 1, sig: 1 });
+mv('spinKick',  { name: 'Spinning Back Kick', limb: 'rf', lvl: 'body', kind: 'spin', su: 0.33, ac: 0.08, rc: 0.46, dmg: 18, st: 16, hs: 0.42, bs: 0.24, gd: 18, push: 3.0, reach: 1.04, heavy: 2, lin: 1, sig: 1 });
 mv('flyKnee',   { name: 'Flying Knee',    limb: 'rf', lvl: 'head', kind: 'knee',     su: 0.34, ac: 0.09, rc: 0.50, dmg: 17, st: 16, dz: 27, hs: 0.42, bs: 0.22, gd: 18, push: 1.4, adv: 0.85, reach: 0.72, heavy: 2, track: 1, sig: 1 });
 mv('stepKnee',  { name: 'Step Knee',      limb: 'rf', lvl: 'body', kind: 'knee',     su: 0.26, ac: 0.08, rc: 0.40, dmg: 13, st: 11, hs: 0.36, bs: 0.2,  gd: 12, push: 1.2, adv: 0.4, reach: 0.66, heavy: 1, sig: 1 });
-mv('qKick',     { name: 'Question Mark Kick', limb: 'lf', lvl: 'head', kind: 'round', su: 0.34, ac: 0.08, rc: 0.46, dmg: 15, st: 14, dz: 25, hs: 0.4, bs: 0.2,  gd: 14, push: 0.9, heavy: 2, high: 1, sig: 1, fake: 'leg' });
-mv('sideKick',  { name: 'Side Kick',      limb: 'lf', lvl: 'body', kind: 'push',     su: 0.28, ac: 0.08, rc: 0.42, dmg: 11, st: 11, hs: 0.34, bs: 0.22, gd: 12, push: 3.4, reach: 1.06, heavy: 2, lin: 1, sig: 1 });
+mv('qKick',     { name: 'Question Mark Kick', limb: 'lf', lvl: 'head', kind: 'round', su: 0.31, ac: 0.08, rc: 0.44, dmg: 15, st: 13, dz: 25, hs: 0.4, bs: 0.2,  gd: 14, push: 0.9, heavy: 2, high: 1, sig: 1, fake: 'leg' });
+mv('sideKick',  { name: 'Side Kick',      limb: 'lf', lvl: 'body', kind: 'push',     su: 0.25, ac: 0.08, rc: 0.4, dmg: 11, st: 10, hs: 0.34, bs: 0.22, gd: 12, push: 3.4, reach: 1.06, heavy: 2, lin: 1, sig: 1 });
 mv('pullCross', { name: 'Pull Counter',   limb: 'rh', lvl: 'head', kind: 'straight', su: 0.34, ac: 0.07, rc: 0.34, dmg: 13, st: 11, dz: 20, hs: 0.36, bs: 0.18, gd: 10, push: 1.2, adv: 0.12, heavy: 2, lin: 1, high: 1, sig: 1, dodge: [0.03, 0.2, 'sway'] });
 mv('shovel',    { name: 'Shovel Hook',    limb: 'rh', lvl: 'body', kind: 'upper',    su: 0.25, ac: 0.08, rc: 0.38, dmg: 12, st: 11, hs: 0.38, bs: 0.2,  gd: 12, push: 0.8, adv: 0.16, reach: 0.84, heavy: 2, sig: 1, drain: 14 });
 

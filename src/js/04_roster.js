@@ -7,7 +7,7 @@ const GRID0 = { qp: { mid: 'jab', high: 'hookL', low: 'bodyJab' }, pp: { mid: 'c
 const ALT0 = { jab: 'jab', hookL: 'upperL', bodyJab: 'bodyHookL', cross: 'hookR', upperR: 'hookR', bodyCross: 'bodyHookR' };
 const ROSTER = [
   { id: 'vale', name: 'Elias Vale', nick: 'Blueprint', arch: 'Technical all-rounder', cls: 'Middleweight', lbs: 185, from: 'Rotterdam', stance: 'orthodox', accent: '#4f7fd1', record: '14-2',
-    stats: { power: 70, speed: 72, stamina: 74, defense: 74, endurance: 72 },
+    stats: { power: 72, speed: 74, stamina: 74, defense: 76, endurance: 72 },
     blurb: 'No wasted motion. Clean fundamentals at every range.', plus: 'Balanced tools, crisp combinations', minus: 'No single overwhelming weapon',
     style: {},
     moves: GRID0, sig: [{ id: 'superman' }, { id: 'qKick' }], maxChain: 5,
@@ -33,12 +33,12 @@ const ROSTER = [
       gloves: { a: '#f0ece2', b: '#17181c', c: '#22b8a8' }, shorts: { len: 0.36, loose: 0.25, a: '#0f6f69', b: '#f0ece2', c: '#f2d14a', pattern: 1 }, emblem: 'bolt', wrap: '#f0ece2' } },
 
   { id: 'koval', name: 'Bogdan Koval', nick: 'Avalanche', arch: 'Powerful pressure fighter', cls: 'Heavyweight', lbs: 255, from: 'Lviv', stance: 'orthodox', accent: '#c8452f', record: '19-4',
-    stats: { power: 95, speed: 44, stamina: 50, defense: 60, endurance: 90 },
+    stats: { power: 95, speed: 44, stamina: 48, defense: 58, endurance: 88 },
     blurb: 'Walks through fire to land one shot. One is usually enough.', plus: 'Devastating power, iron chin', minus: 'Slow hands, tires quickly',
     style: { stanceW: 0.19, stanceL: 0.2, crouch: 0.1, blade: -0.34, twist: -0.1, lean: 0.2, lh: [0.19, 0.31, 0.2], rh: [0.0, 0.3, 0.16], bounce: 0.0, sway: 0.016, swayHz: 0.42, stepDur: 0.27, stepThr: 0.13, headMove: 0.05, rearYaw: -0.7 },
     moves: { ...GRID0, pp: { mid: 'cross', high: 'upperR', low: 'bodyHookR' }, qp: { mid: 'jab', high: 'hookL', low: 'bodyHookL' } }, sig: [{ id: 'overhand' }, { id: 'stepKnee' }], maxChain: 3,
     combos: [{ name: 'Sledge', seq: ['jab', 'overhand'] }, { name: 'Rockslide', seq: ['hookL', 'hookR'] }, { name: 'Body Bag', seq: ['bodyHookL', 'bodyHookR', 'hookL'] }, { name: 'Avalanche', seq: ['jab', 'cross', 'hookL'] }],
-    ai: { aggr: 0.85, range: 0.86, kick: 0.15, body: 0.4, counter: 0.2, evade: 0.1, guard: 0.75, combo: 0.5 },
+    ai: { aggr: 0.85, range: 0.86, kick: 0.15, body: 0.4, counter: 0.2, evade: 0.1, guard: 0.6, combo: 0.5 },
     intro: 'introPound', win: 'winFlex',
     look: { skin: '#dba488', hairCol: '#552f1d', ink: '#2a1612', dark: 0, guardCol: '#c8452f',
       build: { height: 1.91, mass: 1.2, shoulders: 1.08, chest: 1.08, waist: 1.14, neck: 1.18, def: 0.35, traps: 1.25, forearms: 1.08 }, face: { jaw: 1.14, jawH: 1.05, chin: 1.1, brow: 1.25, noseW: 1.2, noseL: 0.92, noseB: 1.25, skullW: 1.04, ears: 1.1, lips: 0.9 }, facePaint: { eye: '#5b7186', browT: 1.35, eyeH: 0.9, browArch: 0.4, marks: [{ a: [-36, 92], b: [-27, 82], w: 2.6 }] },
@@ -46,12 +46,12 @@ const ROSTER = [
       gloves: { a: '#1a1a1d', b: '#c8452f', c: '#3a3b40' }, shorts: { len: 0.42, loose: 0.45, a: '#151518', b: '#c8452f', c: '#e9e3d6', pattern: 2 }, emblem: 'peak' } },
 
   { id: 'duarte', name: 'Mateo Duarte', nick: 'Sombra', arch: 'Defensive counter-striker', cls: 'Welterweight', lbs: 170, from: 'Montevideo', stance: 'southpaw', accent: '#2fa56a', record: '16-1',
-    stats: { power: 70, speed: 80, stamina: 72, defense: 95, endurance: 66 },
+    stats: { power: 72, speed: 80, stamina: 74, defense: 95, endurance: 68 },
     blurb: 'Lets you miss, then makes you pay for it.', plus: 'Best guard and counter damage, long reach', minus: 'Low output, weaker when forced to lead',
     style: { stanceW: 0.13, stanceL: 0.26, crouch: 0.045, blade: -0.72, twist: -0.2, lean: 0.02, lh: [0.2, 0.0, 0.22], rh: [0.07, 0.27, 0.15], le: 0.15, bounce: 0.003, sway: 0.006, swayHz: 0.4, headMove: 0.012, stepDur: 0.19, guardTight: 1 },
     moves: GRID0, sig: [{ id: 'pullCross' }, { id: 'sideKick' }], maxChain: 4, counterK: 1.25,
     combos: [{ name: 'Receipt', seq: ['cross', 'hookL'] }, { name: 'Check, Please', seq: ['hookL', 'cross', 'lowKickR'] }, { name: 'Shadow Line', seq: ['jab', 'cross', 'bodyKickR'] }, { name: 'Sombra', seq: ['jab', 'upperR', 'hookL'] }],
-    ai: { aggr: 0.25, range: 1.12, kick: 0.3, body: 0.25, counter: 0.9, evade: 0.6, guard: 0.9, combo: 0.6 },
+    ai: { aggr: 0.36, range: 1.08, kick: 0.3, body: 0.25, counter: 0.9, evade: 0.6, guard: 0.9, combo: 0.7 },
     intro: 'introCalm', win: 'winBow',
     look: { skin: '#b9794f', hairCol: '#0f0d0c', ink: '#251209', dark: 0.25, guardCol: '#e8e2d6',
       build: { height: 1.80, mass: 0.96, arms: 1.06, shoulders: 1.0, def: 0.7, waist: 0.96 }, face: { jaw: 0.98, chin: 1.04, cheek: 1.05, noseL: 1.1, noseB: 0.95, faceL: 1.03, brow: 0.95 }, facePaint: { eye: '#2c1d14', browT: 1.0, eyeTilt: 0.02, eyeW: 1.03 },
@@ -59,7 +59,7 @@ const ROSTER = [
       gloves: { a: '#101112', b: '#c9a45c', c: '#1f6e48' }, shorts: { len: 0.46, loose: 0.5, a: '#134a31', b: '#c9a45c', c: '#101112', pattern: 0 }, emblem: 'wing' } },
 
   { id: 'okafor', name: 'Tobe Okafor', nick: 'Engine', arch: 'Endurance specialist', cls: 'Light Heavyweight', lbs: 205, from: 'Lagos', stance: 'orthodox', accent: '#e58a2e', record: '13-3', unlock: 2,
-    stats: { power: 66, speed: 66, stamina: 98, defense: 66, endurance: 80 },
+    stats: { power: 64, speed: 64, stamina: 98, defense: 64, endurance: 78 },
     blurb: 'Round three looks exactly like round one. That is the problem.', plus: 'Bottomless gas tank, body attack drains stamina', minus: 'Average speed, no one-shot power',
     style: { stanceW: 0.15, stanceL: 0.22, crouch: 0.075, blade: -0.44, lean: 0.15, lh: [0.23, 0.29, 0.26], rh: [0.04, 0.28, 0.18], bounce: 0.012, bounceHz: 2.15, sway: 0.01, stepDur: 0.18, headMove: 0.025 },
     moves: { ...GRID0, pp: { mid: 'cross', high: 'upperR', low: 'bodyHookR' } }, sig: [{ id: 'shovel' }, { id: 'bodyKickL' }], maxChain: 6, bodyDrain: 1.35,
@@ -72,7 +72,7 @@ const ROSTER = [
       gloves: { a: '#1b1b1e', b: '#e58a2e', c: '#e9e3d6' }, shorts: { len: 0.52, loose: 0.65, a: '#26272c', b: '#e58a2e', c: '#e9e3d6', pattern: 4 }, emblem: 'gear', mono: 'TO' } },
 
   { id: 'moana', name: 'Kai Moana', nick: 'Wildcard', arch: 'Unpredictable creative striker', cls: 'Middleweight', lbs: 185, from: 'Hilo', stance: 'orthodox', accent: '#c056c9', record: '12-5', unlock: 4,
-    stats: { power: 86, speed: 84, stamina: 70, defense: 64, endurance: 76 },
+    stats: { power: 88, speed: 86, stamina: 72, defense: 64, endurance: 76 },
     blurb: 'Even he does not know what comes next.', plus: 'Spinning attacks from odd angles, big burst damage', minus: 'Loose guard, burns stamina fast',
     style: { stanceW: 0.17, stanceL: 0.21, crouch: 0.09, blade: -0.56, lean: 0.1, lh: [0.3, 0.1, 0.26], rh: [0.03, 0.2, 0.2], le: 0.25, re: 0.2, bounce: 0.015, bounceHz: 1.75, sway: 0.03, swayHz: 0.7, stepDur: 0.2, headMove: 0.05 },
     moves: { ...GRID0, qk: { mid: 'sideKick', high: 'qKick', low: 'lowKickL' } }, sig: [{ id: 'spinFist' }, { id: 'spinKick' }], maxChain: 5,
