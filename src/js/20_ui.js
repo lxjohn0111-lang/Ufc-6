@@ -46,7 +46,7 @@ const UI = {
   // ── HUD ────────────────────────────────────────────────────────────────
   hudBind(M) { M.f.forEach((f, i) => { const p = this.el.plates[i], d = f.def; p.pic.style.setProperty('--ac', d.accent); p.root.style.setProperty('--ac', d.accent); p.nm.innerHTML = `${esc(d.name.split(' ')[0])}<b>“${esc(d.nick)}”</b>${esc(d.name.split(' ').slice(1).join(' '))}`; p.img.src = Portraits.map[d.id] || ''; Portraits.ensure(d).then(u => p.img.src = u); this.last[i] = {}; });
     this.el.pips.innerHTML = M.rules.noClock ? '' : Array.from({ length: M.rules.rounds }, () => '<i></i>').join(''); this.lastT = null; },
-  hudShow(v) { this.el.hud.classList.toggle('on', !!v); },
+  hudShow(v) { this.el.hud.classList.toggle('on', !!v); document.body.classList.toggle('nohud', !v); },
   hudUpdate(M) {
     M.f.forEach((f, i) => { const p = this.el.plates[i], L = this.last[i], hp = clamp01(f.hp / f.k.hpMax), st = f.st / 100, cap = f.stCap / 100, gd = clamp01(f.guard / f.k.guardMax);
       if (Math.abs(hp - (L.hp ?? -1)) > 0.002) { p.hpI.style.transform = `scaleX(${hp.toFixed(3)})`; p.hpU.style.transform = `scaleX(${hp.toFixed(3)})`; p.hp.classList.toggle('low', hp < 0.28); L.hp = hp; }

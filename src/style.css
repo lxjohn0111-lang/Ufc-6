@@ -157,7 +157,7 @@ body.touch:not(.portrait) .tcard{width:min(520px,calc(100vw - var(--u)*10.4));pa
 
 /* ── touch controls ────────────────────────────────── */
 .tc{position:absolute;inset:0;pointer-events:none;display:none}
-body.touch .tc{display:block}body.touch.menu .tc{display:none}
+body.touch .tc{display:block}body.touch.menu .tc,body.touch.nohud .tc{display:none}
 .tc-zone{position:absolute;left:0;top:24%;width:46%;bottom:0;pointer-events:auto}
 .tc-joy{position:fixed;width:calc(var(--u)*1.9);height:calc(var(--u)*1.9);margin:calc(var(--u)*-.95) 0 0 calc(var(--u)*-.95);border-radius:50%;border:2px solid rgba(239,233,220,.3);background:radial-gradient(rgba(14,15,18,.1),rgba(14,15,18,.42));left:calc(var(--sl) + var(--u)*1.25);top:calc(100% - var(--sb) - var(--u)*1.35);opacity:.5;transition:opacity .15s}
 .tc-joy.on{opacity:1;border-color:var(--gold)}.tc-joy i{position:absolute;left:50%;top:50%;width:var(--u);height:var(--u);margin:calc(var(--u)*-.5);border-radius:50%;background:radial-gradient(circle at 35% 30%,#f1e9d6,#b9ae98);box-shadow:0 4px 14px rgba(0,0,0,.5);opacity:.9}
@@ -173,9 +173,9 @@ body.touch .tc{display:block}body.touch.menu .tc{display:none}
 .b-ev{right:calc(var(--u)*3.45);bottom:calc(var(--u)*1.2);width:calc(var(--u)*.92);height:calc(var(--u)*.92)}
 .b-s1,.b-s2{width:calc(var(--u)*.7);height:calc(var(--u)*.7);border-color:rgba(201,164,92,.6)}.b-s1 b,.b-s2 b{color:var(--gold2)}.b-s1{right:calc(var(--u)*2.5);bottom:calc(var(--u)*2.5)}.b-s2{right:calc(var(--u)*.02);bottom:calc(var(--u)*2.52)}
 /* portrait phones: the fight plays in the upper part, the lower part is a dedicated control deck */
-body.portrait{--u:clamp(52px,15.5vw,76px)}
+body.portrait{--u:clamp(44px,13.2vw,70px)}
 body.portrait .tc{top:var(--gh);background:linear-gradient(#1a1c20,#0e0f12);border-top:2px solid var(--gold)}
-body.portrait .tc-zone{top:0;width:44%}body.portrait .tc-joy{position:absolute;top:auto;bottom:calc(var(--sb) + var(--u)*.6);left:calc(var(--sl) + var(--u)*1.05)}
+body.portrait .tc-zone{top:0;width:40%}body.portrait .tc-joy{left:calc(var(--sl) + var(--u)*.98);top:calc(100% - var(--sb) - var(--u)*1.6)}
 body.portrait #hint{display:none}body.portrait .vcard .meta{display:none}
 body.portrait .hubb{grid-template-columns:1fr;grid-template-rows:auto 1fr}body.portrait .who{align-self:start;padding:0}body.portrait .who q,body.portrait .who .meta{display:none}body.portrait .hub{background:linear-gradient(rgba(8,9,11,.35),rgba(8,9,11,.93) 34%)}body.portrait .rost{grid-template-columns:repeat(3,1fr)}
 @media (max-height:520px){.tcard{padding:6px 12px 8px}.tcard p{font-size:12px}.hdr{padding-bottom:2px}.rost{gap:4px}.who q{display:none}.stats{gap:1px 10px}.pm{font-size:11px;line-height:1.35}}

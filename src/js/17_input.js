@@ -16,6 +16,7 @@ const Input = {
     addEventListener('blur', () => { this.down.clear(); this.joy.on = false; this.tGuard = false; });
     const cv = document.getElementById('gl');
     cv.addEventListener('mousedown', e => { if (IS_TOUCH && this.touchUsed) return; this.any = true; Bus.emit('anykey', e); if (e.button === 0) this.push({ t: 'atk', slot: 'qp', lvl: 'mid' }); else if (e.button === 2) this.push({ t: 'atk', slot: 'pp', lvl: 'mid' }); });
+    addEventListener('pointerdown', e => { this.any = true; if (e.pointerType === 'touch') this.touchUsed = true; Bus.emit('anykey', e); }, true);    // any first tap / click starts the game and unlocks audio
     addEventListener('contextmenu', e => e.preventDefault());
     for (const ev of ['touchmove', 'gesturestart', 'gesturechange']) document.addEventListener(ev, e => { if (!e.target.closest || !e.target.closest('.scroll')) e.preventDefault(); }, { passive: false });
     addEventListener('gamepadconnected', () => Bus.emit('pad', true));
@@ -42,20 +43,21 @@ const Input = {
   },
   /** touch controls: built once, shown on touch devices */
   buildTouch(root) {
+    const cap = (node, e) => { try { node.setPointerCapture(e.pointerId); } catch (err) { /* synthetic or already-released pointer */ } };
     const el = (cls, html, par = root) => { const d = document.createElement('div'); d.className = cls; d.innerHTML = html || ''; par.appendChild(d); return d; };
     const T = this.tc = el('tc'); const zone = el('tc-zone', '', T), base = el('tc-joy', '<i></i>', T), knob = base.firstChild; this.joyEl = base;
     const R = 46, J = this.joy;
-    zone.addEventListener('pointerdown', e => { if (J.on) return; this.touchUsed = true; this.any = true; Bus.emit('anykey', e); J.on = true; J.id = e.pointerId; J.ox = e.clientX; J.oy = e.clientY; J.x = J.y = 0; base.style.left = e.clientX + 'px'; base.style.top = e.clientY + 'px'; base.classList.add('on'); knob.style.transform = ''; zone.setPointerCapture(e.pointerId); });
+    zone.addEventListener('pointerdown', e => { if (J.on) return; this.touchUsed = true; this.any = true; Bus.emit('anykey', e); J.on = true; J.id = e.pointerId; J.ox = e.clientX; J.oy = e.clientY; J.x = J.y = 0; base.style.left = e.clientX + 'px'; base.style.top = e.clientY + 'px'; base.classList.add('on'); knob.style.transform = ''; cap(zone, e); });
     const mv = e => { if (!J.on || e.pointerId !== J.id) return; let dx = e.clientX - J.ox, dy = e.clientY - J.oy; const d = Math.hypot(dx, dy); if (d > R) { dx *= R / d; dy *= R / d; } J.x = dx / R; J.y = -dy / R; knob.style.transform = `translate(${dx}px,${dy}px)`; };
-    const up = e => { if (e.pointerId !== J.id) return; J.on = false; J.x = J.y = 0; base.classList.remove('on'); };
+    const up = e => { if (e.pointerId !== J.id) return; J.on = false; J.x = J.y = 0; base.classList.remove('on'); base.style.left = base.style.top = ''; knob.style.transform = ''; };
     zone.addEventListener('pointermove', mv); zone.addEventListener('pointerup', up); zone.addEventListener('pointercancel', up);
     const pad = el('tc-pad', '', T);
     const atk = (slot, cls, name, sub) => { const b = el('tc-b ' + cls, `<em>▲</em><b>${name}</b><s>${sub}</s><em>▼</em>`, pad); let st = null;
-      b.addEventListener('pointerdown', e => { e.preventDefault(); this.touchUsed = true; this.any = true; Bus.emit('anykey', e); b.setPointerCapture(e.pointerId); st = { y: e.clientY, t: performance.now(), lvl: 'mid' }; b.classList.add('on'); this.push({ t: 'atk', slot, lvl: 'mid' }); });
+      b.addEventListener('pointerdown', e => { e.preventDefault(); this.touchUsed = true; this.any = true; Bus.emit('anykey', e); cap(b, e); st = { y: e.clientY, t: performance.now(), lvl: 'mid' }; b.classList.add('on'); this.push({ t: 'atk', slot, lvl: 'mid' }); });
       b.addEventListener('pointermove', e => { if (!st || st.lvl !== 'mid') return; const dy = e.clientY - st.y; if (Math.abs(dy) > 20 && performance.now() - st.t < 260) { st.lvl = dy < 0 ? 'high' : 'low'; b.classList.add(st.lvl); this.push({ t: 'atk', slot, lvl: st.lvl, upgrade: true }); } });
       const end = () => { st = null; b.classList.remove('on', 'high', 'low'); }; b.addEventListener('pointerup', end); b.addEventListener('pointercancel', end); return b; };
     atk('pp', 'b-pp', 'POWER', 'punch'); atk('qp', 'b-qp', 'JAB', 'punch'); atk('pk', 'b-pk', 'POWER', 'kick'); atk('qk', 'b-qk', 'KICK', 'quick');
-    const g = el('tc-b b-guard', '<b>GUARD</b><s>hold · ↑ high ↓ low</s>', pad); g.addEventListener('pointerdown', e => { e.preventDefault(); this.touchUsed = true; g.setPointerCapture(e.pointerId); this.tGuard = true; g.classList.add('on'); }); const gu = () => { this.tGuard = false; g.classList.remove('on'); }; g.addEventListener('pointerup', gu); g.addEventListener('pointercancel', gu);
+    const g = el('tc-b b-guard', '<b>GUARD</b><s>hold · ↑ high ↓ low</s>', pad); g.addEventListener('pointerdown', e => { e.preventDefault(); this.touchUsed = true; cap(g, e); this.tGuard = true; g.classList.add('on'); }); const gu = () => { this.tGuard = false; g.classList.remove('on'); }; g.addEventListener('pointerup', gu); g.addEventListener('pointercancel', gu);
     const tap = (cls, html, fn) => { const b = el('tc-b ' + cls, html, pad); b.addEventListener('pointerdown', e => { e.preventDefault(); this.touchUsed = true; b.classList.add('on'); fn(); setTimeout(() => b.classList.remove('on'), 120); }); return b; };
     tap('b-ev', '<b>EVADE</b><s>+ direction</s>', () => this.push({ t: 'evade' })); tap('b-s1', '<b>★</b><s>sig 1</s>', () => this.push({ t: 'sig', i: 0 })); tap('b-s2', '<b>★</b><s>sig 2</s>', () => this.push({ t: 'sig', i: 1 }));
   },
