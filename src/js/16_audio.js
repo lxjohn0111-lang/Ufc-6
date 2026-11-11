@@ -17,8 +17,11 @@ const Sfx = {
     // noise sources
     const len = c.sampleRate * 2, nb = this.noiseBuf = c.createBuffer(1, len, c.sampleRate), d = nb.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     const bb = this.brownBuf = c.createBuffer(1, len, c.sampleRate), e = bb.getChannelData(0); let l = 0; for (let i = 0; i < len; i++) { l = (l + 0.02 * (Math.random() * 2 - 1)) / 1.02; e[i] = l * 3.5; }
+    this.an = c.createAnalyser(); this.an.fftSize = 2048; this.master.connect(this.an);
     this.crowdBed(); this.ready = true; if (c.state === 'suspended') c.resume();
   },
+  /** output level right now (used by the automated test to prove sound is produced) */
+  rms() { if (!this.an) return 0; const d = new Float32Array(this.an.fftSize); this.an.getFloatTimeDomainData(d); let s = 0; for (let i = 0; i < d.length; i++) s += d[i] * d[i]; return Math.sqrt(s / d.length); },
   setVol() { if (!this.ctx) return; const v = Store.data.vol, t = this.ctx.currentTime; this.master.gain.setTargetAtTime(v.master, t, 0.05); this.bSfx.gain.setTargetAtTime(v.sfx, t, 0.05); this.bCrowd.gain.setTargetAtTime(v.crowd * 0.9, t, 0.05); this.bMusic.gain.setTargetAtTime(v.music * 0.8, t, 0.05); },
   noise(buf, loop) { const s = this.ctx.createBufferSource(); s.buffer = buf || this.noiseBuf; s.loop = !!loop; if (!loop) s.playbackRate.value = 0.8 + Math.random() * 0.4; return s; },
   pan(x) { const c = this.ctx; if (!c.createStereoPanner) return null; const p = c.createStereoPanner(); p.pan.value = clamp(x, -0.8, 0.8); return p; },

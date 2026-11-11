@@ -178,6 +178,8 @@ body.portrait .tc{top:var(--gh);background:linear-gradient(#1a1c20,#0e0f12);bord
 body.portrait .tc-zone{top:0;width:40%}body.portrait .tc-joy{left:calc(var(--sl) + var(--u)*.98);top:calc(100% - var(--sb) - var(--u)*1.6)}
 body.portrait #hint{display:none}body.portrait .vcard .meta{display:none}
 body.portrait .hubb{grid-template-columns:1fr;grid-template-rows:auto 1fr}body.portrait .who{align-self:start;padding:0}body.portrait .who q,body.portrait .who .meta{display:none}body.portrait .hub{background:linear-gradient(rgba(8,9,11,.35),rgba(8,9,11,.93) 34%)}body.portrait .rost{grid-template-columns:repeat(3,1fr)}
+@media (max-width:760px) and (orientation:landscape){body.touch:not(.portrait) .tcard{bottom:auto;top:calc(var(--st) + clamp(52px,8.6vw,70px));width:min(94vw,560px);padding:4px 34px 5px 10px}body.touch:not(.portrait) .tcard h4{display:inline;font-size:14px;margin-right:8px}body.touch:not(.portrait) .tcard .k{display:none}body.touch:not(.portrait) .tcard p{display:inline;font-size:11px}body.touch:not(.portrait) .tprog{margin-top:4px}body.touch:not(.portrait) #pauseBtn{top:auto;bottom:calc(var(--sb) + var(--u)*3.3)}}
+@media (max-height:360px){:root{--u:clamp(42px,13vh,84px)}}
 @media (max-height:520px){.tcard{padding:6px 12px 8px}.tcard p{font-size:12px}.hdr{padding-bottom:2px}.rost{gap:4px}.who q{display:none}.stats{gap:1px 10px}.pm{font-size:11px;line-height:1.35}}
 @media (max-width:760px) and (orientation:landscape){.rost{grid-template-columns:repeat(6,1fr)}.hubb{grid-template-columns:minmax(0,32fr) minmax(0,68fr)}}
 @media (hover:none){.fc{filter:saturate(.8) brightness(.8)}}

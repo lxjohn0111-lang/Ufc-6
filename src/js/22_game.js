@@ -158,7 +158,7 @@ const Game = {
     document.addEventListener('visibilitychange', () => { if (document.hidden && this.M && this.M.state === 'fight' && !this.paused && this.M.o.p1ai == null) this.togglePause(); });
     UI.el.card.addEventListener('pointerdown', () => { this.skipReq = true; }); document.getElementById('gl').addEventListener('pointerdown', () => { if (this.cine) this.skipReq = true; });
     // test / debug hooks
-    IA.Game = this; IA.AICtrl = AICtrl; IA.Bus = Bus; IA.Input = Input; IA.Cam = Cam; IA.MOVES = MOVES; IA.UI = UI; IA.Replay = Replay; IA.Tutorial = Tutorial; IA.Store = Store; IA.Sfx = Sfx;
+    IA.Game = this; IA.Sculptor = Sculptor; IA.Models = Models; IA.AICtrl = AICtrl; IA.Bus = Bus; IA.Input = Input; IA.Cam = Cam; IA.MOVES = MOVES; IA.UI = UI; IA.Replay = Replay; IA.Tutorial = Tutorial; IA.Store = Store; IA.Sfx = Sfx;
     IA.dbg.step = (sec, dt = 1 / 60) => { for (let t = 0; t < sec; t += dt) this.step(dt, false); };
     IA.dbg.render = () => Gfx.render(0);
     IA.dbg.state = () => { const M = this.M; return { mode: this.mode, ui: UI.mode, co: !!this.co, paused: this.paused, tut: Tutorial.active ? Tutorial.tset[Tutorial.i].id + ':' + Tutorial.count.toFixed(1) : null, M: M && { t: +M.simT.toFixed(2), state: M.state, round: M.round, time: +M.time.toFixed(1), over: M.over, result: M.result, scores: M.scores, f: M.f.map(f => ({ id: f.def.id, hp: +f.hp.toFixed(1), st: +f.st.toFixed(0), cap: +f.stCap.toFixed(0), state: f.state, daze: +f.daze.toFixed(0), guard: +f.guard.toFixed(0), cond: Object.fromEntries(Object.entries(f.cond).map(([k, v]) => [k, Math.round(v)])), pos: [+f.pos.x.toFixed(2), +f.pos.z.toFixed(2)], stats: f.stats, move: f.move && f.move.id })) } }; };

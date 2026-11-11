@@ -5,8 +5,8 @@
    combinations, punishes whiffs, goes to the body/legs when the head is covered, and backs off
    to breathe when its stamina is low. */
 const AI_LEVELS = [
-  { name: 'Rookie',    react: 0.36, def: 0.42, read: 0.55, aggr: 0.6,  combo: 2, gap: [1.3, 2.8], punish: 0.25, adapt: 0.2 },
-  { name: 'Contender', react: 0.26, def: 0.7, read: 0.75, aggr: 0.9,  combo: 4, gap: [0.9, 2.0], punish: 0.6, adapt: 0.6 },
+  { name: 'Rookie',    react: 0.36, def: 0.46, read: 0.55, aggr: 0.6,  combo: 2, gap: [1.3, 2.8], punish: 0.25, adapt: 0.2 },
+  { name: 'Contender', react: 0.26, def: 0.76, read: 0.75, aggr: 0.9,  combo: 4, gap: [0.9, 2.0], punish: 0.6, adapt: 0.6 },
   { name: 'Champion',  react: 0.18, def: 0.9, read: 0.9,  aggr: 1.15, combo: 6, gap: [0.55, 1.4], punish: 0.9, adapt: 1.0 },
 ];
 class AICtrl {
@@ -48,7 +48,7 @@ class AICtrl {
       if (f.state === 'idle') { const r = f.rangeOf(m) * 0.96; if (dist <= r) { f.pressMove(id); this.queue.shift(); this.sent = id; } else if (dist < r + 0.9) move(1, 0.15); else this.queue.length = 0; }
       else if (f.state === 'attack' && f.hitDone) { if (f.connected || rand() < 0.3) { if (!f.buf) { f.pressMove(id); this.queue.shift(); } } else this.queue.length = 0; }
       else if (f.state === 'hit' || f.state === 'stagger') this.queue.length = 0;
-      if (!this.queue.length) { this.tAct = lerp(D.gap[0], D.gap[1], rand()) * (1.35 - 0.6 * p.aggr); if (rand() > p.aggr) this.reset = 0.35 + rand() * 0.5; }
+      if (!this.queue.length) { this.tAct = lerp(D.gap[0], D.gap[1], rand()) * (1.35 - 0.6 * p.aggr) * f.k.time0 * f.k.time0; if (rand() > p.aggr) this.reset = 0.35 + rand() * 0.5; }
       return;
     }
     if (defending) return;
@@ -61,7 +61,7 @@ class AICtrl {
     else if (dist < want - 0.28 && p.aggr < 0.75) move(-0.7, 0.3);
     else move((rand() - 0.5) * 0.3, 0.55 * (0.4 + (1 - p.aggr) * 0.8));
     // guard discipline: keep the hands home when in the pocket and not throwing
-    if (dist < o.rangeOf(MOVES.cross) + 0.25 && f.free && o.state !== 'hit' && o.state !== 'stagger') { this.gT = (this.gT || 0) - dt; if (this.gT <= 0) { this.gT = 0.35 + rand() * 0.5; this.gOn = rand() < p.guard * D.def * (o.state === 'attack' ? 1.25 : 1) + 0.1; this.gLvl = rand() < 0.2 ? 1 : rand() < 0.12 ? -1 : 0; } if (this.gOn) { f.in.guard = true; f.in.glv = this.gLvl; } }
+    if (dist < o.rangeOf(MOVES.cross) + 0.25 && f.free && o.state !== 'hit' && o.state !== 'stagger') { this.gT = (this.gT || 0) - dt; if (this.gT <= 0) { this.gT = 0.35 + rand() * 0.5; this.gOn = rand() < p.guard * D.def * (o.state === 'attack' ? 1.3 : 1.05) + 0.12; this.gLvl = rand() < 0.2 ? 1 : rand() < 0.12 ? -1 : 0; } if (this.gOn) { f.in.guard = true; f.in.glv = this.gLvl; } }
     if (this.tAct <= 0 && f.free && dist < jr + 1.0) {
       const go = clamp01(p.aggr * D.aggr * (o.rocked > 0 ? 1.6 : 1) * (f.st > 45 ? 1 : 0.5) * 0.8);
       if (rand() < go) this.queue = this.pickCombo(dist, false); else { this.tAct = 0.4 + rand() * 0.8; if (rand() < 0.3) this.holdG = 0.4, this.holdLvl = 0; }
@@ -77,7 +77,7 @@ class AICtrl {
     add(['jab'], 1.4); add(['jab', 'cross'], 1.5); add(['jab', 'jab'], 0.5); add([g.pp.mid], 0.6); add(['jab', g.qp.high], 0.7); add([g.qp.high, g.pp.mid], 0.6);
     add([g.qp.low], 0.8 * bodyK); add([g.qp.low, g.pp.mid], 0.8 * bodyK); add(['jab', g.pp.low], 1.0 * bodyK); add([g.pp.low, g.qp.high], 0.8 * bodyK);
     add([g.qk.low], 1.2 * legK); add([g.pk.low], 1.3 * legK); add(['jab', g.pk.low], 1.0 * legK); add([g.qk.mid], 0.9 * kickK); add([g.pk.mid], 1.0 * kickK * (guardHigh ? 1.6 : 1)); add([g.pk.high], 0.45 * kickK * (o.rocked > 0 ? 2.5 : 1)); add(['jab', 'cross', g.pk.mid], 0.6 * kickK);
-    for (const sg of f.def.sig) add(sg.macro || [sg.id], (punish ? 1.4 : 0.55) * (p.wild ? 1.5 : 1) * (f.st > 40 ? 1 : 0.2));
+    for (const sg of f.def.sig) add(sg.macro || [sg.id], (punish ? 1.4 : 0.55) * (p.wild ? 1.25 : 1) * (f.st > 40 ? 1 : 0.2));
     if (dist < jr * 0.8) { add([g.pp.high], 1.3); add(['upperL', 'hookR'], 0.9); add([g.qp.high, g.pp.high], 1.0); }
     if (!opts.length) return ['jab'];
     let tot = 0; for (const op of opts) tot += op.w; let r = rand() * tot; for (const op of opts) { if ((r -= op.w) <= 0) return op.seq.slice(0, Math.max(1, D.combo)); } return opts[0].seq.slice();

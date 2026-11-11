@@ -31,7 +31,8 @@ class Match {
     a.ctrl.think(h); b.ctrl.think(h); a.step(h, this); b.step(h, this); this.collide();
     for (const f of this.f) { const A = f.anim; A.root.copy(f.pos); A.yaw = f.yaw; A.vel.copy(f.vel); if (!f.down) f.opp.anim.pt('headC', A.aimW.look); A.update(h); f.post(); f.model.face.update(h); }
     const ra = a.checkStrike(), rb = b.checkStrike();
-    if (ra) a.applyStrike(ra, this); if (rb && !(b.down && rb.type !== 'whiff')) b.applyStrike(rb, this);
+    // both results were decided before either lands; apply in random order so neither corner is favoured
+    const first = rand() < 0.5 ? 0 : 1, rs = [ra, rb]; for (const i of [first, 1 - first]) { const f = this.f[i], r = rs[i]; if (r && !(f.down && r.type !== 'whiff')) f.applyStrike(r, this); }
     if (this.state === 'fight' && !this.over) {
       if (!this.rules.noClock && !a.down && !b.down) this.time -= h;
       if (this.time <= 0) { this.time = 0; this.endRound(); }

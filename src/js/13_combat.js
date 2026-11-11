@@ -2,7 +2,7 @@
    Frame data (seconds at neutral speed), per-fighter scaling, stamina with long-term fatigue,
    four-region condition, guard meter, evades with typed invulnerability, counter windows,
    chains with buffered input, and strike resolution measured on the posed skeletons. */
-const MOVES = {}, DMG_K = 0.32;        // global damage scale: tunes fight length without touching the relative frame data
+const MOVES = {}, DMG_K = 0.3;        // global damage scale: tunes fight length without touching the relative frame data
 const mv = (id, o) => (MOVES[id] = { id, clip: id, track: 0.62, reach: 1, push: 1, heavy: 0, adv: 0, dz: 0, bs: 0.15, gd: 8, ...o });
 //            name                limb  level        kind              startup active recover  dmg  stam  daze  hitstun
 mv('jab',       { name: 'Jab',            limb: 'lh', lvl: 'head', kind: 'straight', su: 0.13, ac: 0.07, rc: 0.21, dmg: 4,  st: 4,  dz: 5,  hs: 0.25, bs: 0.12, gd: 5,  push: 0.5, adv: 0.1, lin: 1, high: 1, self: 1 });
@@ -99,7 +99,8 @@ class Fighter {
     for (const r in this.cond) { this.regT[r] += dt; if (this.regT[r] > 3 && this.cond[r] < this.cap[r]) this.cond[r] = Math.min(this.cap[r], this.cond[r] + 1.6 * k.recover * dt); }
     const bodyK = 0.45 + 0.55 * this.cond.body / 100, legK = 0.6 + 0.4 * this.cond.legs / 100;
     if (this.state !== 'attack' && this.state !== 'evade' && this.sinceSpend > 0.55 && !M.rules.noRegen) {
-      const moving = this.vel.lengthSq() > 0.3; this.st = Math.min(this.stCap, this.st + 17 * k.stRegen * bodyK * (this.guarding ? 0.45 : 1) * (moving ? 0.8 : 1) * (this.exhaust > 0 ? 0.45 : 1) * (this.down ? 1.5 : 1) * dt); }
+      const sp2 = this.vel.lengthSq(), moving = sp2 > 0.3; if (sp2 > 1.2 && !this.rules.infSt) this.stCap = Math.max(34, this.stCap - 0.07 * k.fatigue * dt);      // footwork tires you too, slowly
+      this.st = Math.min(this.stCap, this.st + 17 * k.stRegen * bodyK * (this.guarding ? 0.45 : 1) * (moving ? (sp2 > 1.2 ? 0.55 : 0.8) : 1) * (this.exhaust > 0 ? 0.45 : 1) * (this.down ? 1.5 : 1) * dt); }
     if (!this.guarding && this.blockT > 1 && this.gbreak <= 0) this.guard = Math.min(k.guardMax, this.guard + 20 * dt); this.blockT += dt; this.gbreak -= dt;
     if (M.rules.infSt) { this.st = this.stCap = 100; } if (M.rules.infHp) { this.hp = k.hpMax; this.daze = 0; for (const r in this.cond) this.cond[r] = this.cap[r] = 100; }
     const fat = clamp01(1 - this.st / 100), speedK = k.move * legK * (1 - 0.3 * fat * fat) * (this.rocked > 0 ? 0.5 : 1) * (this.exhaust > 0 ? 0.65 : 1);
@@ -154,10 +155,10 @@ class Fighter {
     const F = this.model.face; if (this.state === 'ko' || (this.state === 'down' && this.final)) F.idle('out'); else if (this.down) F.idle('dazed'); else if (this.rocked > 0) F.idle('dazed'); else if (this.guarding) F.idle('guard'); else if (this.st < 28) F.idle('tired'); else F.idle(this.state === 'cine' ? (this.cineFace || 'neutral') : 'focus');
     F.gaze[0] = 0; this.model.u.uSweat.value = damp(this.model.u.uSweat.value, this.sweat, 1, dt); this.model.u.uDirt.value = this.dirt;
     this.model.dmg.set(1 - this.cond.head / 100, 1 - this.cond.body / 100, 1 - this.cond.arms / 100, 1 - this.cond.legs / 100);
-    if (this.flash > 0) { this.flash -= dt * 6; this.model.setFlash(Math.max(0, this.flash) * 0.2); }
+    if (this.flash > 0) { this.flash -= dt * 8; this.model.setFlash(Math.max(0, this.flash) * 0.11); }
   }
   setState(s) { this.state = s; this.stateT = 0; if (s === 'idle') { this.move = null; this.evade = null; } }
-  spend(cost) { if (this.rules && this.rules.infSt) return; this.st = Math.max(0, this.st - cost); this.stCap = Math.max(34, this.stCap - cost * 0.052 * this.k.fatigue); this.sinceSpend = 0; this.sweat = Math.min(1, this.sweat + cost * 0.0035); if (this.st <= 0.5 && this.exhaust <= 0) { this.exhaust = 2.2; Bus.emit('exhaust', { f: this }); } }
+  spend(cost) { if (this.rules && this.rules.infSt) return; this.st = Math.max(0, this.st - cost); this.stCap = Math.max(34, this.stCap - cost * 0.052 * this.k.fatigue); this.sinceSpend = 0; this.sweat = Math.min(1, this.sweat + cost * 0.0016); if (this.st <= 0.5 && this.exhaust <= 0) { this.exhaust = 2.2; Bus.emit('exhaust', { f: this }); } }
   startAttack(id, chained, M) {
     const m = MOVES[id], k = this.k, n = chained ? this.chain.length : 0; if (!chained) { this.chain.length = 0; this.comboDmg = 0; }
     const cost = m.st * k.stCost * (1 + 0.13 * n); this.gassed = this.st < cost * 0.6 || this.exhaust > 0; this.spend(cost);
@@ -223,7 +224,7 @@ class Fighter {
       if (r.perfect) { this.ph[2] += 0.16; A.setPhases(this.ph); o.counterT = 0.7; o.stats.blocked++; o.blockReact(m, dir, 0.3); info.perfect = true; info.dmg = 0; this.macro = null; Bus.emit('hit', info); return; }
       const full = r.cov === 2, armK = 1 + 0.6 * (1 - o.cond.arms / 100);
       if (r.type === 'check') { const self = dmg * 0.45; this.hurt('legs', self, 0.5); o.hurt('legs', dmg * 0.15, 0.2); info.dmg = dmg * 0.15; info.check = true; }
-      else { const chip = dmg * (full ? 0.06 : 0.24) * o.k.chip * armK; o.hurt(m.lvl === 'head' ? 'head' : 'body', chip, 0.5); o.hurt('arms', dmg * 0.22, 0.25); info.dmg = chip;
+      else { const chip = dmg * (full ? 0.06 : 0.2) * o.k.chip * armK; o.hurt(m.lvl === 'head' ? 'head' : 'body', chip, 0.5); o.hurt('arms', dmg * 0.22, 0.25); info.dmg = chip;
         o.guard -= m.gd * (full ? 1 : 1.5) * (m.kind === 'upper' && m.lvl === 'head' ? 1.6 : 1) * (k.dmg * 0.5 + 0.5); if (m.lvl === 'head' && !full) o.daze += m.dz * 0.25; }
       this.ph[2] *= 1.12; A.setPhases(this.ph); o.stats.blocked++; o.blockT = 0; o.blockReact(m, dir, 1 + m.heavy * 0.5);
       if (o.guard <= 0) { o.guard = 0; o.gbreak = 1.6; o.stunT = 0.95; o.setState('stagger'); o.anim.guardW = 0; o.guarding = false; o.guard = o.k.guardMax * 0.55; info.gbreak = true; o.model.face.set('hurt', 1); }
@@ -238,7 +239,7 @@ class Fighter {
     if (o.guarding && !o.covers(m)) bonus *= 1.1;
     // named combination finisher
     let combo = null; for (const c of this.def.combos) { const n = c.seq.length; if (this.chain.length >= n && c.seq.every((id, i) => this.chain[this.chain.length - n + i] === id)) if (!combo || n > combo.seq.length) combo = c; }
-    if (combo && this.comboHits >= combo.seq.length - 1) { bonus *= 1.25; info.combo = combo.name; this.stats.combos++; }
+    if (combo && this.comboHits >= combo.seq.length - 1) { bonus *= 1.15; info.combo = combo.name; this.stats.combos++; }
     dmg *= bonus; mult *= bonus; info.dmg = dmg; info.mult = mult; info.counter = counter || counterHit; info.clean = true;
     this.comboHits = (this.comboT > 0 ? this.comboHits : 0) + 1; this.comboT = 1; this.comboDmg += dmg; info.hits = this.comboHits;
     this.stats.landed++; this.stats.dmg += dmg; this.stats[m.lvl === 'leg' ? 'legs' : m.lvl]++; if (m.heavy) this.stats.sig++; this.stats.best = Math.max(this.stats.best, this.comboHits);
@@ -253,7 +254,7 @@ class Fighter {
   takeHit(info, region, dmg, M) {
     const m = info.m, att = info.att, A = this.anim, k = this.k; this.sinceHit = 0; this.guarding = false; A.guardW = 0; this.macro = null; this.buf = null;
     const hp0 = this.hp; this.hurt(region, dmg); if (region === 'body') { this.stCap = Math.max(34, this.stCap - dmg * 0.7 * (att.def.bodyDrain || 1)); this.st = Math.max(0, this.st - (dmg * 1.6 * (att.def.bodyDrain || 1) + (m.drain || 0))); }
-    this.sweat = Math.min(1, this.sweat + 0.02); this.flash = 0.6 + m.heavy * 0.2;
+    this.sweat = Math.min(1, this.sweat + 0.008); this.flash = 0.6 + m.heavy * 0.2;
     // direction-sensitive procedural reaction: the head / torso are driven by where the strike came from
     const l = this.localDir(info.dir, _c), w = (0.55 + m.heavy * 0.55) * clamp(info.mult, 0.7, 1.6);
     if (region === 'head') A.impulse({ head: [l.x * 13 * w, -l.z * 11 * w - l.y * 14 * w, -l.x * 8 * w], spine: [l.x * 3.2 * w, -l.z * 3.4 * w - l.y * 2 * w, l.x * 1.4 * w], hips: [l.x * 0.5 * w, 0, l.z * 0.8 * w] });
@@ -261,7 +262,7 @@ class Fighter {
     else A.impulse({ hips: [l.x * 1.3 * w, -1.1 * w, l.z * 0.5 * w], spine: [0, 1.6 * w, -l.x * 2.2 * w], head: [0, 2 * w, 0] });
     A.shake = 0.006 + 0.004 * m.heavy;
     this.model.addMark(info.pos, region === 'head' ? BN.head : region === 'body' ? BN.chest : BN.thighL, 0.35 + 0.3 * m.heavy);
-    if (region === 'head') { if (this.cond.head < 62 && m.heavy && rand() < 0.4) this.model.face.addCut(l.x > 0 ? -1 : 1); const sw = this.model.face.sw, sd = l.x > 0 ? 1 : 0; sw[sd] = Math.min(1, sw[sd] + dmg * 0.022 * (m.heavy ? 1.3 : 0.6)); this.model.face.dirty = true; this.daze += m.dz * info.mult * (0.75 + 0.5 * (1 - this.cond.head / 100)); }
+    if (region === 'head') { if (this.cond.head < 62 && m.heavy && rand() < 0.4) this.model.face.addCut(l.x > 0 ? -1 : 1); const sw = this.model.face.sw, sd = l.x > 0 ? 1 : 0; sw[sd] = Math.min(clamp01((100 - this.cap.head) / 55), sw[sd] + dmg * 0.02 * (m.heavy ? 1.3 : 0.6)); this.model.face.dirty = true; this.daze += m.dz * info.mult * (0.75 + 0.5 * (1 - this.cond.head / 100)); }
     this.model.face.set(m.heavy > 1 ? 'pain' : 'hurt', 0.35 + m.heavy * 0.15);
     this.vel.addScaledVector(info.dir, m.push * (0.7 + 0.3 * m.heavy)).setY(0);
     // ── outcomes ──

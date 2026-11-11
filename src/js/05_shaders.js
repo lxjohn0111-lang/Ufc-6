@@ -85,7 +85,7 @@ void main(){
   vec2 bp = vBind.xy / sc + vBind.z * vec2(0.37, 0.21) / sc;
   float nLow = fbm(bp * 9.0), nMid = fbm(bp * 34.0 + 7.3), nHi = vnoise(bp * 420.0);
   // ── albedo by surface kind ───────────────────────────────────────────────
-  vec3 base = uSkin; vec3 shadeMul = uSkinShade; float gloss = 0.35 + 0.65 * uSweat, specAmt = 0.10 + 0.5 * uSweat, warm = 1.0, hatchAmt = uHatch, isSkin = 1.0;
+  vec3 base = uSkin; vec3 shadeMul = uSkinShade; float gloss = 0.35 + 0.65 * uSweat, specAmt = 0.09 + 0.26 * uSweat, warm = 1.0, hatchAmt = uHatch, isSkin = 1.0;
   base *= 0.94 + 0.12 * nLow;
   #ifdef BODY
     if (vReg.w * uHideOn > 0.0) discard;
@@ -155,13 +155,13 @@ void main(){
       float isLeg = 1.0 - smoothstep(uZone.x - 0.06, uZone.x + 0.02, vBind.y), isArm = smoothstep(uZone.y - 0.02, uZone.y + 0.05, abs(vBind.x)) * (1.0 - isLeg);
       dmg = mix(mix(uDmg.y, uDmg.z, isArm), uDmg.w, isLeg);
     #endif
-    float blot = smoothstep(1.0 - dmg * 0.75, 1.15 - dmg * 0.75, nLow * 0.6 + nMid * 0.55);
+    float blot = smoothstep(1.0 - dmg * 0.95, 1.14 - dmg * 0.95, nLow * 0.6 + nMid * 0.55);
     vec3 bruise = mix(vec3(1.12, 0.62, 0.6), vec3(0.74, 0.5, 0.66), smoothstep(0.5, 1.0, dmg) * nMid);
     base = mix(base, base * bruise, blot * 0.7 * isSkin);
-    base = mix(base, base * vec3(1.08, 0.9, 0.88), dmg * 0.35 * isSkin);
+    base = mix(base, base * vec3(1.1, 0.86, 0.84), dmg * 0.5 * isSkin);
     float mk = 0.0;
-    for (int i = 0; i < 6; i++) { vec3 dd = vBind - uMarks[i].xyz; mk = max(mk, uMarks[i].w * (1.0 - smoothstep(0.0, 0.055 * sc, length(dd) + (nMid - 0.5) * 0.02))); }
-    base = mix(base, base * vec3(1.2, 0.5, 0.48), mk * 0.75 * isSkin);
+    for (int i = 0; i < 6; i++) { vec3 dd = vBind - uMarks[i].xyz; mk = max(mk, uMarks[i].w * (1.0 - smoothstep(0.012 * sc, 0.075 * sc, length(dd) + (nMid - 0.5) * 0.03))); }
+    base = mix(base, base * vec3(1.22, 0.5, 0.5), mk * 0.9 * isSkin);
     float dirt = smoothstep(0.62, 0.8, nLow + nMid * 0.4) * uDirt;
     base = mix(base, base * vec3(0.72, 0.7, 0.68), dirt);
   #endif
@@ -192,8 +192,8 @@ void main(){
   float rim = smoothstep(0.52, 0.72, fr + wob * 0.6) * smoothstep(-0.15, 0.45, dot(N, uRimDir));
   col += uRimCol * rim * (0.55 + 0.45 * base) * (0.4 + 0.6 * vAO.x);
   vec3 Hh = normalize(uKeyDir + V); float sp = pow(max(dot(N, Hh), 0.0), mix(18.0, 70.0, gloss));
-  float sweatDots = smoothstep(0.82, 0.9, nHi) * uSweat * isSkin * tMid;
-  col += uKeyCol * (smoothstep(0.32, 0.5, sp + wob) * specAmt + sweatDots * 0.22) * shd;
+  float sweatDots = smoothstep(0.9, 0.97, nHi) * uSweat * isSkin * tLit;
+  col += uKeyCol * (smoothstep(0.32, 0.5, sp + wob) * specAmt + sweatDots * 0.14) * shd;
   col = col * uDim + uFlash * vec3(1.0, 0.92, 0.8);
   gl_FragColor = vec4(col, 1.0);
 }`;
