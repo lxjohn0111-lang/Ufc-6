@@ -7,6 +7,7 @@ const THREE_VERSION = '0.160.0';
 const THREE_URLS = [
   `https://cdn.jsdelivr.net/npm/three@${THREE_VERSION}/build/three.module.min.js`,
   `https://unpkg.com/three@${THREE_VERSION}/build/three.module.min.js`,
+  `https://cdnjs.cloudflare.com/ajax/libs/three.js/${THREE_VERSION}/three.module.min.js`,
   `https://esm.sh/three@${THREE_VERSION}`
 ];
 async function loadThree() {

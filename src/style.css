@@ -1,6 +1,6 @@
 :root{--ink:#0e0f12;--char:#17191d;--char2:#22252b;--gold:#c9a45c;--gold2:#e8c987;--bone:#efe9dc;--steel:#8b9099;--red:#c8452f;--gh:100vh;--u:clamp(50px,12.5vh,84px);
 --fd:"Barlow Condensed","Avenir Next Condensed","Roboto Condensed","DIN Condensed","Arial Narrow",Impact,sans-serif;--fb:"Barlow","Avenir Next","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
---sl:max(14px,env(safe-area-inset-left));--sr:max(14px,env(safe-area-inset-right));--st:max(10px,env(safe-area-inset-top));--sb:max(10px,env(safe-area-inset-bottom))}
+--sl:max(16px,env(safe-area-inset-left,0px));--sr:max(16px,env(safe-area-inset-right,0px));--st:max(10px,env(safe-area-inset-top,0px));--sb:max(10px,env(safe-area-inset-bottom,0px));color-scheme:dark}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;background:var(--ink);color:var(--bone);font-family:var(--fb);overscroll-behavior:none;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 #gl{position:fixed;left:0;top:0;width:100%;height:100%;display:block;outline:none}

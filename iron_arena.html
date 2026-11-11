@@ -13,7 +13,7 @@
 <style>
 :root{--ink:#0e0f12;--char:#17191d;--char2:#22252b;--gold:#c9a45c;--gold2:#e8c987;--bone:#efe9dc;--steel:#8b9099;--red:#c8452f;--gh:100vh;--u:clamp(50px,12.5vh,84px);
 --fd:"Barlow Condensed","Avenir Next Condensed","Roboto Condensed","DIN Condensed","Arial Narrow",Impact,sans-serif;--fb:"Barlow","Avenir Next","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
---sl:max(14px,env(safe-area-inset-left));--sr:max(14px,env(safe-area-inset-right));--st:max(10px,env(safe-area-inset-top));--sb:max(10px,env(safe-area-inset-bottom))}
+--sl:max(16px,env(safe-area-inset-left,0px));--sr:max(16px,env(safe-area-inset-right,0px));--st:max(10px,env(safe-area-inset-top,0px));--sb:max(10px,env(safe-area-inset-bottom,0px));color-scheme:dark}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;background:var(--ink);color:var(--bone);font-family:var(--fb);overscroll-behavior:none;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 #gl{position:fixed;left:0;top:0;width:100%;height:100%;display:block;outline:none}
@@ -213,6 +213,7 @@ const THREE_VERSION = '0.160.0';
 const THREE_URLS = [
   `https://cdn.jsdelivr.net/npm/three@${THREE_VERSION}/build/three.module.min.js`,
   `https://unpkg.com/three@${THREE_VERSION}/build/three.module.min.js`,
+  `https://cdnjs.cloudflare.com/ajax/libs/three.js/${THREE_VERSION}/three.module.min.js`,
   `https://esm.sh/three@${THREE_VERSION}`
 ];
 async function loadThree() {
@@ -2888,7 +2889,7 @@ const Input = {
   mx: 0, my: 0, guard: false, queue: [], down: new Set(), binds: null, byCode: {}, lastAtk: null, joy: { on: false, id: -1, ox: 0, oy: 0, x: 0, y: 0 }, tGuard: false, pad: { prev: [] }, labels: {}, any: false, capture: null, kbUsed: false, touchUsed: false,
   init() {
     this.binds = { ...BIND0, ...(Store.data.binds || {}) }; this.index();
-    if (navigator.keyboard && navigator.keyboard.getLayoutMap) navigator.keyboard.getLayoutMap().then(m => { m.forEach((v, k) => this.labels[k] = v.toUpperCase()); Bus.emit('labels'); }).catch(() => {});
+    try { if (navigator.keyboard && navigator.keyboard.getLayoutMap) navigator.keyboard.getLayoutMap().then(m => { m.forEach((v, k) => this.labels[k] = v.toUpperCase()); Bus.emit('labels'); }).catch(() => {}); } catch (e) { /* not available in this frame */ }
     addEventListener('keydown', e => this.key(e, true), { passive: false }); addEventListener('keyup', e => this.key(e, false));
     addEventListener('blur', () => { this.down.clear(); this.joy.on = false; this.tGuard = false; });
     const cv = document.getElementById('gl');
@@ -2941,7 +2942,7 @@ const Input = {
   update() {
     const D = this.down; let x = (D.has('right') ? 1 : 0) - (D.has('left') ? 1 : 0), y = (D.has('up') ? 1 : 0) - (D.has('down') ? 1 : 0); let guard = D.has('guard') || this.tGuard;
     if (this.joy.on) { x = this.joy.x; y = this.joy.y; }
-    const gp = navigator.getGamepads ? [...navigator.getGamepads()].find(p => p && p.connected && p.mapping === 'standard') : null;
+    let gp = null; if (!this.noPad && navigator.getGamepads) { try { gp = [...navigator.getGamepads()].find(p => p && p.connected && p.mapping === 'standard') || null; } catch (e) { this.noPad = true; } }   // embedded frames may refuse the Gamepad API
     if (gp) { const ax = gp.axes[0], ay = gp.axes[1]; if (Math.hypot(ax, ay) > 0.22) { x = ax; y = -ay; } const B = i => gp.buttons[i] && gp.buttons[i].pressed, P = this.pad.prev, hit = i => B(i) && !P[i];
       if (B(12)) y = 1; if (B(13)) y = -1; if (B(14)) x = -1; if (B(15)) x = 1; guard = guard || B(5);
       const lvl = B(7) ? 'high' : B(6) ? 'low' : 'mid'; if (hit(2) && hit(3)) this.push({ t: 'sig', i: 0 }); else if (hit(0) && hit(1)) this.push({ t: 'sig', i: 1 }); else { if (hit(2)) this.push({ t: 'atk', slot: 'qp', lvl }); if (hit(3)) this.push({ t: 'atk', slot: 'pp', lvl }); if (hit(0)) this.push({ t: 'atk', slot: 'qk', lvl }); if (hit(1)) this.push({ t: 'atk', slot: 'pk', lvl }); }

@@ -11,7 +11,7 @@ const Input = {
   mx: 0, my: 0, guard: false, queue: [], down: new Set(), binds: null, byCode: {}, lastAtk: null, joy: { on: false, id: -1, ox: 0, oy: 0, x: 0, y: 0 }, tGuard: false, pad: { prev: [] }, labels: {}, any: false, capture: null, kbUsed: false, touchUsed: false,
   init() {
     this.binds = { ...BIND0, ...(Store.data.binds || {}) }; this.index();
-    if (navigator.keyboard && navigator.keyboard.getLayoutMap) navigator.keyboard.getLayoutMap().then(m => { m.forEach((v, k) => this.labels[k] = v.toUpperCase()); Bus.emit('labels'); }).catch(() => {});
+    try { if (navigator.keyboard && navigator.keyboard.getLayoutMap) navigator.keyboard.getLayoutMap().then(m => { m.forEach((v, k) => this.labels[k] = v.toUpperCase()); Bus.emit('labels'); }).catch(() => {}); } catch (e) { /* not available in this frame */ }
     addEventListener('keydown', e => this.key(e, true), { passive: false }); addEventListener('keyup', e => this.key(e, false));
     addEventListener('blur', () => { this.down.clear(); this.joy.on = false; this.tGuard = false; });
     const cv = document.getElementById('gl');
@@ -64,7 +64,7 @@ const Input = {
   update() {
     const D = this.down; let x = (D.has('right') ? 1 : 0) - (D.has('left') ? 1 : 0), y = (D.has('up') ? 1 : 0) - (D.has('down') ? 1 : 0); let guard = D.has('guard') || this.tGuard;
     if (this.joy.on) { x = this.joy.x; y = this.joy.y; }
-    const gp = navigator.getGamepads ? [...navigator.getGamepads()].find(p => p && p.connected && p.mapping === 'standard') : null;
+    let gp = null; if (!this.noPad && navigator.getGamepads) { try { gp = [...navigator.getGamepads()].find(p => p && p.connected && p.mapping === 'standard') || null; } catch (e) { this.noPad = true; } }   // embedded frames may refuse the Gamepad API
     if (gp) { const ax = gp.axes[0], ay = gp.axes[1]; if (Math.hypot(ax, ay) > 0.22) { x = ax; y = -ay; } const B = i => gp.buttons[i] && gp.buttons[i].pressed, P = this.pad.prev, hit = i => B(i) && !P[i];
       if (B(12)) y = 1; if (B(13)) y = -1; if (B(14)) x = -1; if (B(15)) x = 1; guard = guard || B(5);
       const lvl = B(7) ? 'high' : B(6) ? 'low' : 'mid'; if (hit(2) && hit(3)) this.push({ t: 'sig', i: 0 }); else if (hit(0) && hit(1)) this.push({ t: 'sig', i: 1 }); else { if (hit(2)) this.push({ t: 'atk', slot: 'qp', lvl }); if (hit(3)) this.push({ t: 'atk', slot: 'pp', lvl }); if (hit(0)) this.push({ t: 'atk', slot: 'qk', lvl }); if (hit(1)) this.push({ t: 'atk', slot: 'pk', lvl }); }
