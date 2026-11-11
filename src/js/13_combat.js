@@ -46,7 +46,7 @@ class Fighter {
     this.k = { dmg: lerp(0.8, 1.2, st.power / 100), time: lerp(1.3, 0.8, st.speed / 100), move: lerp(0.84, 1.18, st.speed / 100), stCost: lerp(1.5, 0.7, st.stamina / 100), stRegen: lerp(0.7, 1.4, st.stamina / 100), fatigue: lerp(1.9, 0.4, st.stamina / 100),
       guardMax: 100 * lerp(0.75, 1.3, st.defense / 100), chip: lerp(1.35, 0.6, st.defense / 100), evadeWin: lerp(-0.03, 0.05, st.defense / 100) + lerp(-0.02, 0.04, st.speed / 100), perfect: lerp(0.1, 0.2, st.defense / 100),
       hpMax: 100 * lerp(0.9, 1.12, st.endurance / 100), dazeMax: lerp(30, 54, st.endurance / 100), recover: lerp(0.7, 1.3, st.endurance / 100), counter: def.counterK || 1 };
-    this.armLen = this.sk.ua + this.sk.fa + 0.07 * s; this.legLen = this.sk.thigh + this.sk.shin + 0.1 * s;
+    this.k.time0 = this.k.time; this.armLen = this.sk.ua + this.sk.fa + 0.07 * s; this.legLen = this.sk.thigh + this.sk.shin + 0.1 * s;
     this.pos = V3(); this.vel = V3(); this.yaw = 0; this.wish = V3(); this.in = { guard: false, glv: 0 }; this.buf = null; this.opp = null; this.ctrl = null;
     this.anim.onStep = (i, h) => Bus.emit('step', { f: this, i, h });
     this.rag = null; this.reset();
@@ -114,7 +114,7 @@ class Fighter {
         const f = this.fwd(_b), fd = tv.x * f.x + tv.z * f.z; tv.multiplyScalar(fd > 0 ? 2.0 : 1.65); if (fd > 0 && dist < 0.62) tv.addScaledVector(f, -fd * 2.0);
         if (this.chainT < 0 && this.chain.length) { this.chain.length = 0; this.comboDmg = 0; }
         const b = this.buf;
-        if (b && this.gbreak <= 0) { if (b.type === 'evade') { this.buf = null; this.startEvade(b.ev); } else { const id = this.resolveSlot(b); this.buf = null; this.atkSlot = b.slot; if (id && MOVES[id]) this.startAttack(id, false, M); } }
+        if (b && this.gbreak <= 0) { if (b.type === 'evade') { this.buf = null; this.startEvade(b.ev); } else { const id = this.resolveSlot(b); this.buf = null; this.atkSlot = b.slot; this.atkLvl = b.lvl; if (id && MOVES[id]) this.startAttack(id, false, M); } }
         break; }
       case 'attack': {
         const m = this.move, ph = this.ph, t = this.stateT; turn = t < ph[0] * m.track ? 3.2 : 0.4; A.guardW = 0; this.guarding = false;
@@ -127,7 +127,7 @@ class Fighter {
         if (b && b.type !== 'evade' && this.hitDone) {
           const can = this.connected ? t >= ph[0] + ph[1] * 0.4 : t >= ph[0] + ph[1] + ph[2] * 0.62;
           if (can) { const id = b.macro ? b.id : this.resolveSlot(b), n = MOVES[id]; const sc = this.def.selfChain && this.def.selfChain[m.id] || 0, same = n && n.limb === m.limb, rep = this.chain.filter(c => c === m.id).length;
-            if (n && this.chain.length < (this.def.maxChain || 5) && (!same || (n.id === m.id && (m.self || sc) && rep < Math.max(2, sc + 1)) || !this.connected || b.macro)) { if (b.macro) this.macro.seq.shift(); else { this.buf = null; this.macro = null; this.atkSlot = b.slot; } if (this.macro && !this.macro.seq.length) this.macro = null; this.startAttack(id, this.connected, M); break; } } }
+            if (n && this.chain.length < (this.def.maxChain || 5) && (!same || (n.id === m.id && (m.self || sc) && rep < Math.max(2, sc + 1)) || !this.connected || b.macro)) { if (b.macro) this.macro.seq.shift(); else { this.buf = null; this.macro = null; this.atkSlot = b.slot; this.atkLvl = b.lvl; } if (this.macro && !this.macro.seq.length) this.macro = null; this.startAttack(id, this.connected, M); break; } } }
         if (b && b.type === 'evade' && this.hitDone && t >= ph[0] + ph[1] + ph[2] * 0.5) { this.buf = null; this.startEvade(b.ev); break; }
         if (t >= ph[0] + ph[1] + ph[2]) { this.setState('idle'); this.chainT = 0.28; this.macro = null; }
         break; }

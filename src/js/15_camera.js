@@ -25,7 +25,7 @@ const Cam = {
       const ha = a.down ? 0.45 : 1.05, hb = b.down ? 0.45 : 1.05, hy = (ha * a.sk.s + hb * b.sk.s) / 2;
       const focus = this.mode === 'ko' && this.focus ? this.focus : null;
       const mx = (a.pos.x + b.pos.x) / 2, mz = (a.pos.z + b.pos.z) / 2;
-      let d = clamp(2.75 + sep * 1.32, 3.7, 6.6) * wide, h = 1.34 + (d / wide - 3.7) * 0.14, ty = hy + 0.02;
+      let d = clamp(3.0 + sep * 1.3, 4.15, 6.8) * wide, h = 1.36 + (d / wide - 4.15) * 0.14, ty = hy - 0.03;
       if (focus) { this.orbit += dt * 0.22; T.set(lerp(mx, focus.pos.x, 0.7), focus.down ? 0.5 : 1.05, lerp(mz, focus.pos.z, 0.7)); d = 3.5 * wide; h = 0.95; this.yaw += dt * 0.22; }
       else T.set(mx, ty, mz);
       const ox = Math.sin(this.yaw), oz = Math.cos(this.yaw);

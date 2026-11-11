@@ -180,28 +180,30 @@ const Anatomy = (() => {
     const st = hair.style;
     if (st === 'crop') { cap(0.003, 0.03); extra.push(hp({ t: 'e', c: H(0, 0.176, 0.012), r: [0.05 * hs, 0.032 * hs, 0.078 * hs], rot: [-0.08, 0, 0], k: 0.04 }), hp({ t: 'e', c: H(0, 0.172, 0.068), r: [0.042 * hs, 0.026 * hs, 0.028 * hs], rot: [-0.55, 0, 0], k: 0.03 })); }
     else if (st === 'slick') { cap(0.011); extra.push(hp({ t: 'e', c: H(0, 0.19, -0.01), r: [0.064 * hs, 0.03 * hs, 0.09 * hs], rot: [-0.16, 0, 0], k: 0.03 }), hp({ t: 'c', a: H(0, 0.19, 0.07), b: H(0, 0.15, -0.1), ra: 0.034 * hs, rb: 0.03 * hs, k: 0.03 })); }
-    else if (st === 'mohawk') extra.push(hp({ t: 'c', a: H(0, 0.196, 0.068), b: H(0, 0.212, -0.02), ra: 0.022 * hs, rb: 0.027 * hs, k: 0.012, sq: [0.75, 1.25, 1] }), hp({ t: 'c', a: H(0, 0.212, -0.02), b: H(0, 0.13, -0.108), ra: 0.027 * hs, rb: 0.018 * hs, k: 0.012, sq: [0.75, 1.25, 1] }));
+    else if (st === 'mohawk') { const sq = [0.62, 1.3, 1], k = 0.014; extra.push(hp({ t: 'c', a: H(0, 0.178, 0.078), b: H(0, 0.234, 0.0), ra: 0.024 * hs, rb: 0.031 * hs, k, sq }), hp({ t: 'c', a: H(0, 0.234, 0.0), b: H(0, 0.206, -0.078), ra: 0.031 * hs, rb: 0.027 * hs, k, sq }), hp({ t: 'c', a: H(0, 0.206, -0.078), b: H(0, 0.12, -0.116), ra: 0.027 * hs, rb: 0.015 * hs, k, sq })); }
     else if (st === 'bun') { cap(0.008); extra.push(hp({ t: 'e', c: H(0, 0.225, -0.062), r: [0.036 * hs, 0.034 * hs, 0.036 * hs], k: 0.008 })); }
     else if (st === 'dreads') { cap(0.011);
-      const rg = RNG(77); for (let i = 0; i < 17; i++) { const a = -2.6 + 5.2 * (i / 16), x0 = Math.sin(a) * 0.072, zb = -0.03 - 0.07 * Math.cos(a * 0.5) * Math.cos(a * 0.5) * 0 - 0.06 * Math.abs(Math.cos(a / 2)); extra.push(hp({ t: 'c', a: H(x0 * 0.75, 0.2 - Math.abs(a) * 0.016, -0.01 + zb * 0.4), b: H(x0 * 1.08 + rg.range(-.008, .008), 0.085 - rg.range(0, 0.06), zb - 0.05 - rg.range(0, .02)), ra: 0.0125 * hs, rb: 0.0105 * hs, k: 0.004 })); } }
+      const rg = RNG(77); for (let i = 0; i < 21; i++) { const a = -2.15 + 4.3 * (i / 20) + rg.range(-0.06, 0.06), sn = Math.sin(a), cs = Math.cos(a), len = rg.range(0, 0.07);   // a curtain of locks round the back and sides
+        extra.push(hp({ t: 'c', a: H(sn * 0.066, 0.172 - Math.abs(a) * 0.012, -0.012 - cs * 0.07), b: H(sn * 0.1, 0.035 - len, -0.012 - cs * 0.112 - rg.range(0, 0.012)), ra: 0.0135 * hs, rb: 0.0115 * hs, k: 0.004 })); } }
     else if (st === 'curls') { cap(0.008); const rg = RNG(31); for (let i = 0; i < 30; i++) { const a = rg.range(0, TAU), e2 = rg.range(0.3, 1.4), r0 = 0.082; extra.push(hp({ t: 'e', c: H(Math.sin(a) * Math.cos(e2) * r0, 0.115 + Math.sin(e2) * 0.092, -0.012 + Math.cos(a) * Math.cos(e2) * r0 * 1.2), r: [0.021 * hs, 0.019 * hs, 0.021 * hs], k: 0.008 })); } }
     if (extra.length) {
       const hl = look.hair, vf = hl.volFront ?? hl.front ?? 0.158, vs = hl.volSide ?? hl.side ?? 0.075, vn = hl.volNape ?? hl.nape ?? 0.012;
       const scalpClip = (x, y, z) => { const lx = (x - Hd[0]) / hs, ly = (y - Hd[1]) / hs, lz = (z - Hd[2]) / hs, az = Math.abs(Math.atan2(lx, lz)); return (lerp(lerp(vf, vs, sstep(0.45, 1.15, az)), vn, sstep(1.9, 2.6, az)) - ly) * hs; };
       const skull = Sculpt.compile(headOnly);
       meshes.hair = Sculpt.mesh(extra, { ...hb, cell: 0.0046 * hs / q, nBones: nB, weights: headW,
-        warp: st === 'dreads' || st === 'mohawk' ? null : (x, y, z) => 0.014 * hs * (1 - sstep(-0.01 * hs, 0.06 * hs, -scalpClip(x, y, z))),
+        warp: st === 'mohawk' ? null : st === 'dreads' ? (x, y, z) => { const az = Math.abs(Math.atan2(x - Hd[0], z - Hd[2])); return az > 1.25 ? 0 : 0.016 * hs * (1 - sstep(-0.01 * hs, 0.06 * hs, -scalpClip(x, y, z))) * (1 - sstep(0.95, 1.25, az)); } : (x, y, z) => 0.014 * hs * (1 - sstep(-0.01 * hs, 0.06 * hs, -scalpClip(x, y, z))),
         region: (x, y, z, nx, ny, nz, r) => { r[0] = clamp(Sculpt.evalList(skull, x, y, z) / 0.03, 0, 1); r[1] = (y - Hd[1]) / hs; } });
     }
     const bd = look.beard || {};
     if (bd.style === 'full' || bd.style === 'goatee') {
       const iso = (bd.len ?? 0.008) * hs, cap = headOnly.filter((p, i) => true);
+      const inside = (x, y, z) => { const lx = (x - Hd[0]) / hs, ly = (y - Hd[1]) / hs, lz = (z - Hd[2]) / hs, az = Math.abs(Math.atan2(lx, lz));
+        const top = bd.style === 'goatee' ? -0.002 - 0.25 * Math.abs(lx) : lerp(0.006, 0.05, sstep(0.55, 1.45, az));                 // cheek line
+        const mouth = 0.021 - Math.hypot(lx * 0.75, (ly + 0.004) * 2.1);                                                             // keep lips clear
+        const side = bd.style === 'goatee' ? Math.abs(lx) - 0.034 : -lz - 0.014 - 0.6 * (0.03 - ly);
+        return -Math.max(ly - top, mouth, side, -0.09 - ly) * hs; };
       meshes.beard = Sculpt.mesh(cap, { ...hb, cell: 0.0042 * hs / q, iso, nBones: nB, weights: headW,
-        clip: (x, y, z) => { const lx = (x - Hd[0]) / hs, ly = (y - Hd[1]) / hs, lz = (z - Hd[2]) / hs, az = Math.abs(Math.atan2(lx, lz));
-          const top = bd.style === 'goatee' ? -0.004 - 0.2 * Math.abs(lx) : lerp(0.004, 0.05, sstep(0.55, 1.45, az));                // cheek line
-          const mouth = 0.02 - Math.hypot(lx * 0.75, (ly + 0.004) * 2.1);                                                             // keep lips clear
-          const side = bd.style === 'goatee' ? Math.abs(lx) - 0.03 : -lz - 0.012 - 0.6 * (0.03 - ly);
-          return Math.max(ly - top, mouth, side, -0.085 - ly) * hs; },
+        warp: (x, y, z) => (iso + 0.005) * (1 - sstep(0, 0.02 * hs, inside(x, y, z))),
         region: (x, y, z, nx, ny, nz, r) => { r[0] = 1; r[1] = (y - Hd[1]) / hs; } });
     }
     sk.buildMs = performance.now() - t0;

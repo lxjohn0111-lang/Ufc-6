@@ -29,7 +29,7 @@ const ROSTER = [
     intro: 'introBounce', win: 'winPoint',
     look: { skin: '#cf9870', hairCol: '#d9cc9c', scalpCol: '#3a2a1e', browCol: '#3a2a1e', ink: '#2a1612', dark: 0.05, guardCol: '#22b8a8',
       build: { height: 1.75, mass: 0.9, shoulders: 0.97, legs: 1.02, arms: 1.03, def: 0.92, neck: 0.92, waist: 0.93, calves: 1.05 }, face: { jaw: 0.94, chin: 0.95, cheek: 1.1, skullW: 0.98, noseW: 0.95, eyeSp: 1.02, ears: 1.05 }, facePaint: { eye: '#3d5a48', browT: 0.85, eyeTilt: 0.1, eyeH: 1.05 },
-      hair: { style: 'mohawk', front: 0.15, side: 0.085, nape: 0.02, scalp: 0.55, gloss: 0.8 }, beard: { stubble: 0.15 },
+      hair: { style: 'mohawk', front: 0.15, side: 0.085, nape: 0.02, scalp: 0.86, gloss: 0.8 }, beard: { stubble: 0.15 },
       gloves: { a: '#f0ece2', b: '#17181c', c: '#22b8a8' }, shorts: { len: 0.36, loose: 0.25, a: '#0f6f69', b: '#f0ece2', c: '#f2d14a', pattern: 1 }, emblem: 'bolt', wrap: '#f0ece2' } },
 
   { id: 'koval', name: 'Bogdan Koval', nick: 'Avalanche', arch: 'Powerful pressure fighter', cls: 'Heavyweight', lbs: 255, from: 'Lviv', stance: 'orthodox', accent: '#c8452f', record: '19-4',
@@ -40,9 +40,9 @@ const ROSTER = [
     combos: [{ name: 'Sledge', seq: ['jab', 'overhand'] }, { name: 'Rockslide', seq: ['hookL', 'hookR'] }, { name: 'Body Bag', seq: ['bodyHookL', 'bodyHookR', 'hookL'] }, { name: 'Avalanche', seq: ['jab', 'cross', 'hookL'] }],
     ai: { aggr: 0.85, range: 0.86, kick: 0.15, body: 0.4, counter: 0.2, evade: 0.1, guard: 0.75, combo: 0.5 },
     intro: 'introPound', win: 'winFlex',
-    look: { skin: '#dba488', hairCol: '#6b3a22', ink: '#2a1612', dark: 0, guardCol: '#c8452f',
+    look: { skin: '#dba488', hairCol: '#552f1d', ink: '#2a1612', dark: 0, guardCol: '#c8452f',
       build: { height: 1.91, mass: 1.2, shoulders: 1.08, chest: 1.08, waist: 1.14, neck: 1.18, def: 0.35, traps: 1.25, forearms: 1.08 }, face: { jaw: 1.14, jawH: 1.05, chin: 1.1, brow: 1.25, noseW: 1.2, noseL: 0.92, noseB: 1.25, skullW: 1.04, ears: 1.1, lips: 0.9 }, facePaint: { eye: '#5b7186', browT: 1.35, eyeH: 0.9, browArch: 0.4, marks: [{ a: [-36, 92], b: [-27, 82], w: 2.6 }] },
-      hair: { style: 'bald', scalp: 0.3, front: 0.165, side: 0.08, nape: 0.02 }, beard: { style: 'full', len: 0.013, stubble: 0.5, mustache: 1 },
+      hair: { style: 'bald', scalp: 0.3, front: 0.165, side: 0.08, nape: 0.02 }, beard: { style: 'full', len: 0.012, stubble: 0.6, mustache: 1 },
       gloves: { a: '#1a1a1d', b: '#c8452f', c: '#3a3b40' }, shorts: { len: 0.42, loose: 0.45, a: '#151518', b: '#c8452f', c: '#e9e3d6', pattern: 2 }, emblem: 'peak' } },
 
   { id: 'duarte', name: 'Mateo Duarte', nick: 'Sombra', arch: 'Defensive counter-striker', cls: 'Welterweight', lbs: 170, from: 'Montevideo', stance: 'southpaw', accent: '#2fa56a', record: '16-1',
@@ -68,7 +68,7 @@ const ROSTER = [
     intro: 'introShadow', win: 'winArms',
     look: { skin: '#70452e', hairCol: '#15100d', ink: '#1a0d08', dark: 1, shade: [0.42, 0.37, 0.48], guardCol: '#e58a2e',
       build: { height: 1.88, mass: 1.04, arms: 1.05, legs: 1.03, shoulders: 1.04, def: 0.85, waist: 0.96 }, face: { jaw: 1.02, noseW: 1.25, noseL: 0.95, noseB: 1.2, lips: 1.3, cheek: 1.06, brow: 1.0, skullL: 1.03 }, facePaint: { eye: '#2a1a10', browT: 1.05, lipCol: '#6b3a34', mouthW: 1.04 },
-      hair: { style: 'dreads', front: 0.156, side: 0.08, nape: 0.01, scalp: 1, gloss: 0.5 }, beard: { style: 'goatee', len: 0.008, stubble: 0.35 },
+      hair: { style: 'dreads', front: 0.156, side: 0.08, nape: 0.01, scalp: 1, gloss: 0.5 }, beard: { style: 'goatee', len: 0.008, stubble: 0.45, mustache: 1 },
       gloves: { a: '#1b1b1e', b: '#e58a2e', c: '#e9e3d6' }, shorts: { len: 0.52, loose: 0.65, a: '#26272c', b: '#e58a2e', c: '#e9e3d6', pattern: 4 }, emblem: 'gear', mono: 'TO' } },
 
   { id: 'moana', name: 'Kai Moana', nick: 'Wildcard', arch: 'Unpredictable creative striker', cls: 'Middleweight', lbs: 185, from: 'Hilo', stance: 'orthodox', accent: '#c056c9', record: '12-5', unlock: 4,

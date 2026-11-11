@@ -278,7 +278,7 @@ const Arena = {
     intro:  { key: [1.25, 1.1, 0.9], amb: [0.2, 0.22, 0.32], ambB: [0.1, 0.1, 0.16], pool: 0.1, env: [0.07, 0.08, 0.13], beams: 0.25, movers: 1.6, crowd: 0.6, house: 0, rim: [0.9, 1.1, 1.7], exp: 1.05 },
     gym:    { key: [1.3, 1.24, 1.12], amb: [0.6, 0.6, 0.64], ambB: [0.36, 0.34, 0.36], pool: 0.85, env: [0.2, 0.21, 0.25], beams: 0.5, movers: 0.0, crowd: 0.5, house: 0.5, rim: [0.5, 0.6, 0.8], exp: 1.0 },
     ko:     { key: [1.6, 1.4, 1.1], amb: [0.42, 0.42, 0.52], ambB: [0.24, 0.22, 0.28], pool: 1.1, env: [0.15, 0.16, 0.22], beams: 1.2, movers: 1.2, crowd: 1.25, house: 0, rim: [0.9, 1.05, 1.5], exp: 1.0 },
-    menu:   { key: [1.2, 1.08, 0.9], amb: [0.3, 0.31, 0.4], ambB: [0.16, 0.16, 0.22], pool: 0.55, env: [0.1, 0.11, 0.16], beams: 0.7, movers: 0.9, crowd: 0.7, house: 0, rim: [0.8, 1.0, 1.5], exp: 1.0 },
+    menu:   { key: [1.3, 1.18, 1.0], amb: [0.34, 0.35, 0.44], ambB: [0.18, 0.18, 0.24], pool: 0.4, env: [0.1, 0.11, 0.16], beams: 0.7, movers: 0.9, crowd: 0.7, house: 0, rim: [0.8, 1.0, 1.5], exp: 1.0 },
   },
   setMood(name, snap) { this.moodT = this.MOODS[name]; this.moodName = name; if (snap || !this.mood) this.mood = JSON.parse(JSON.stringify(this.moodT)); },
   cheer(amount, hold = 1.2) { this.excite = Math.max(this.excite, amount); this.exciteT = Math.max(this.exciteT, hold); },
