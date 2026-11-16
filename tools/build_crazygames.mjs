@@ -23,7 +23,8 @@ html = html.replace('<title>IRON ARENA</title>\n', '<title>IRON ARENA</title>\n'
 if (!html.includes('crazygames-sdk-v3')) throw new Error('head insert failed');
 if (/fonts\.googleapis|cdn\.jsdelivr|unpkg\.com/.test(html.replace(/const THREE_URLS[^\n]*\n(\s+`[^`]*`,?\n)+/, ''))) console.warn('note: CDN URLs remain only as the unused fallback list');
 
-rmSync(out, { recursive: true, force: true }); mkdirSync(join(game, 'lib'), { recursive: true }); mkdirSync(join(game, 'fonts'), { recursive: true });
+rmSync(game, { recursive: true, force: true }); rmSync(join(out, 'iron-arena-crazygames.zip'), { force: true });   // only the build outputs; videos/ and SUBMISSION.md stay
+mkdirSync(join(game, 'lib'), { recursive: true }); mkdirSync(join(game, 'fonts'), { recursive: true });
 writeFileSync(join(game, 'index.html'), html);
 copyFileSync(join(root, 'vendor/three.module.min.js'), join(game, 'lib/three.module.min.js'));
 for (const f of readdirSync(join(root, 'vendor/fonts'))) if (f.endsWith('.woff2')) copyFileSync(join(root, 'vendor/fonts', f), join(game, 'fonts', f));
