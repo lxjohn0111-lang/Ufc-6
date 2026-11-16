@@ -26,10 +26,11 @@ const Cam = {
       const focus = this.mode === 'ko' && this.focus ? this.focus : null;
       const mx = (a.pos.x + b.pos.x) / 2, mz = (a.pos.z + b.pos.z) / 2;
       let d = clamp(3.0 + sep * 1.3, 4.15, 6.8) * wide, h = 1.36 + (d / wide - 4.15) * 0.14, ty = hy - 0.03;
-      if (focus) { T.set(lerp(mx, focus.pos.x, 0.55), focus.down ? 0.74 : 1.02, lerp(mz, focus.pos.z, 0.55)); d = Math.max(4.2, d * 0.92) * wide; h = 1.22; this.yaw += dt * 0.1; }   // stay side-on so the fallen fighter and the one standing both read
+      if (focus) { T.set(lerp(mx, focus.pos.x, 0.55), focus.down ? 0.74 : 1.02, lerp(mz, focus.pos.z, 0.55)); d = Math.max(4.2 * wide, d * 0.92); h = 1.22; this.yaw += dt * 0.1; }   // stay side-on so the fallen fighter and the one standing both read
       else T.set(mx, ty, mz);
       const ox = Math.sin(this.yaw), oz = Math.cos(this.yaw);
       P.set(T.x + ox * d, h, T.z + oz * d);
+      { const r = Math.hypot(P.x, P.z), maxR = 7.4; if (r > maxR) { const k = maxR / r; P.x *= k; P.z *= k; P.y += (r - maxR) * 0.22; } }   // never back out past cageside into the crowd
       const k = snap ? 1 : 1 - Math.exp(-dt * 5.5); this.pos.lerp(P, k); this.tgt.lerp(T, snap ? 1 : 1 - Math.exp(-dt * 7)); this.fovNow = damp(this.fovNow || 34, focus ? 30 : 34, 4, dt);
     }
     // impact response: a short spring, never a rumble
