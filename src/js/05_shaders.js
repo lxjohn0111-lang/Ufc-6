@@ -191,7 +191,7 @@ void main(){
   float fr = 1.0 - max(dot(N, V), 0.0);
   float rim = smoothstep(0.52, 0.72, fr + wob * 0.6) * smoothstep(-0.15, 0.45, dot(N, uRimDir));
   col += uRimCol * rim * (0.55 + 0.45 * base) * (0.4 + 0.6 * vAO.x);
-  vec3 Hh = normalize(uKeyDir + V); float sp = pow(max(dot(N, Hh), 0.0), mix(18.0, 70.0, gloss));
+  vec3 Hh = normalize(uKeyDir + V); float sp = pow(clamp(dot(N, Hh), 0.0, 1.0), mix(18.0, 70.0, gloss));
   float sweatDots = smoothstep(0.9, 0.97, nHi) * uSweat * isSkin * tLit;
   col += uKeyCol * (smoothstep(0.32, 0.5, sp + wob) * specAmt + sweatDots * 0.14) * shd;
   col = col * uDim + uFlash * vec3(1.0, 0.92, 0.8);
@@ -199,8 +199,16 @@ void main(){
 }`;
 
 GLSL.fsVert = /* glsl */`varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+GLSL.sane = /* glsl */`
+vec3 sane(vec3 c){
+#if __VERSION__ >= 300
+  if (any(isnan(c)) || any(isinf(c))) return vec3(0.0);
+#endif
+  return clamp(c, 0.0, 48.0); }
+`;
 GLSL.bloomPre = /* glsl */`uniform sampler2D tMap; uniform vec2 uTexel; uniform float uThresh; varying vec2 vUv;
-void main(){ vec3 c = (texture2D(tMap, vUv + uTexel * vec2(-1,-1)).rgb + texture2D(tMap, vUv + uTexel * vec2(1,-1)).rgb + texture2D(tMap, vUv + uTexel * vec2(-1,1)).rgb + texture2D(tMap, vUv + uTexel * vec2(1,1)).rgb) * 0.25;
+${GLSL.sane}
+void main(){ vec3 c = (sane(texture2D(tMap, vUv + uTexel * vec2(-1,-1)).rgb) + sane(texture2D(tMap, vUv + uTexel * vec2(1,-1)).rgb) + sane(texture2D(tMap, vUv + uTexel * vec2(-1,1)).rgb) + sane(texture2D(tMap, vUv + uTexel * vec2(1,1)).rgb)) * 0.25;
   c = min(c, vec3(12.0)); float l = max(c.r, max(c.g, c.b)); float k = smoothstep(uThresh, uThresh * 2.2, l); gl_FragColor = vec4(c * k, 1.0); }`;
 GLSL.bloomDown = /* glsl */`uniform sampler2D tMap; uniform vec2 uTexel; varying vec2 vUv;
 void main(){ vec3 c = texture2D(tMap, vUv).rgb * 4.0; c += texture2D(tMap, vUv + uTexel * vec2(-1,-1)).rgb + texture2D(tMap, vUv + uTexel * vec2(1,-1)).rgb + texture2D(tMap, vUv + uTexel * vec2(-1,1)).rgb + texture2D(tMap, vUv + uTexel * vec2(1,1)).rgb; gl_FragColor = vec4(c / 8.0, 1.0); }`;
@@ -211,12 +219,13 @@ void main(){ vec3 c = texture2D(tMap, vUv + uTexel * vec2(-1,0)).rgb + texture2D
 GLSL.final = /* glsl */`uniform sampler2D tScene, tBloom; uniform vec2 uRes, uCenter; uniform float uBloom, uExposure, uVig, uGrain, uTime, uChroma, uRadial, uDesat, uFade, uFlash, uLetter; uniform vec3 uTint;
 varying vec2 vUv;
 ${GLSL.noise}
+${GLSL.sane}
 void main(){
   vec2 uv = vUv, d = uv - uCenter; vec3 c;
-  if (uRadial > 0.002) { c = vec3(0.0); for (int i = 0; i < 8; i++) { float t = float(i) / 7.0; c += texture2D(tScene, uv - d * uRadial * t).rgb; } c /= 8.0; }
-  else c = texture2D(tScene, uv).rgb;
+  if (uRadial > 0.002) { c = vec3(0.0); for (int i = 0; i < 8; i++) { float t = float(i) / 7.0; c += sane(texture2D(tScene, uv - d * uRadial * t).rgb); } c /= 8.0; }
+  else c = sane(texture2D(tScene, uv).rgb);
   if (uChroma > 0.0005) { c.r = mix(c.r, texture2D(tScene, uv + d * uChroma).r, 0.85); c.b = mix(c.b, texture2D(tScene, uv - d * uChroma).b, 0.85); }
-  c += texture2D(tBloom, uv).rgb * uBloom;
+  c += sane(texture2D(tBloom, uv).rgb) * uBloom;
   c *= uExposure;
   float l = dot(c, vec3(.2126, .7152, .0722));
   c = mix(c, vec3(l) * vec3(1.02, 1.0, 0.96), uDesat);

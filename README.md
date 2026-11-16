@@ -151,6 +151,8 @@ Okafor and Duarte were then adjusted (Okafor down, Duarte up) and re-run on six 
 
 `iron_arena.html` is the whole game and the only file you need. `src/` holds the same code split by system (core, sculpt kernel, anatomy, roster, shaders, renderer, arena, fighter model, rig, clips, animator, ragdoll, combat, AI, camera/effects, audio, input, replay, match, UI, tutorial, game flow) and `node tools/build.mjs` concatenates it back into the HTML — a 20-line script with no dependencies, there for readability rather than necessity.
 
+**CrazyGames build:** `node tools/build.mjs && node tools/build_crazygames.mjs` writes `crazygames/game/` (and a zip of it) with three.js and the fonts bundled from `vendor/`, the CrazyGames SDK v3 wired in, and Backspace as the pause key. Preview videos and the submission notes are in `crazygames/`; see [`crazygames/SUBMISSION.md`](crazygames/SUBMISSION.md).
+
 `tools/smoke_test.cjs` is the optional end-to-end test (`npm i -g playwright`, then `node tools/smoke_test.cjs`).
 
 Debug views for development: `iron_arena.html?view=model&f=koval`, `?view=clip`, `?view=arena`. Useful flags: `?q=low|medium|high`, `?tutorial` (replay the tutorial on boot), `?unlock`.

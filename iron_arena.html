@@ -210,7 +210,7 @@ body.portrait .hubb{grid-template-columns:1fr;grid-template-rows:auto 1fr}body.p
    input → replay → UI → tutorial → game flow. */
 
 const THREE_VERSION = '0.160.0';
-const THREE_URLS = [
+const THREE_URLS = window.IA_THREE ? [window.IA_THREE] : [
   `https://cdn.jsdelivr.net/npm/three@${THREE_VERSION}/build/three.module.min.js`,
   `https://unpkg.com/three@${THREE_VERSION}/build/three.module.min.js`,
   `https://cdnjs.cloudflare.com/ajax/libs/three.js/${THREE_VERSION}/three.module.min.js`,
@@ -266,7 +266,10 @@ function RNG(seed) {
   f.chance = p => f() < p;
   return f;
 }
-const rand = RNG((Date.now() ^ 0x9e3779b9) >>> 0);   // gameplay randomness
+let _rs = RNG((Date.now() ^ 0x9e3779b9) >>> 0);
+const rand = () => _rs();   // gameplay randomness (re-seedable so captures can be reproduced)
+rand.range = (lo, hi) => lo + (hi - lo) * _rs(); rand.int = (lo, hi) => Math.floor(rand.range(lo, hi + 1)); rand.pick = arr => arr[Math.floor(_rs() * arr.length)]; rand.chance = p => _rs() < p;
+const reseed = n => { _rs = RNG(n >>> 0); Math.random = RNG((n ^ 0x5bd1e995) >>> 0); };
 
 /** critically-damped spring for scalars */
 class Spring {
@@ -299,7 +302,10 @@ const Store = {
     this.data = Object.assign({ tutorialDone: false, wins: 0, losses: 0, kos: 0, fights: 0, beaten: {}, binds: null, vol: { master: .9, sfx: 1, crowd: .8, music: .6 }, quality: 'auto', difficulty: 1, lastFighter: 'vale', rounds: 3 }, this.data || {});
     return this.data;
   },
-  save() { try { localStorage.setItem(this.key, JSON.stringify(this.data)); } catch (e) { /* private mode */ } }
+  ext: null,
+  save() { const j = JSON.stringify(this.data); try { localStorage.setItem(this.key, j); } catch (e) { /* private mode */ } if (this.ext) try { this.ext.setItem(this.key, j); } catch (e) { /* portal storage unavailable */ } },
+  /** adopt a portal's cloud-synced storage (same getItem / setItem shape as localStorage) */
+  attach(ext) { if (!ext || !ext.getItem) return; this.ext = ext; const use = v => { if (!v) return; try { Object.assign(this.data, JSON.parse(v)); } catch (e) {} }; try { const v = ext.getItem(this.key); if (v && v.then) v.then(use, () => {}); else use(v); } catch (e) {} }
 };
 Store.load();
 
@@ -310,6 +316,20 @@ const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THRE
 const _m1 = new THREE.Matrix4(), _m2 = new THREE.Matrix4();
 const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const UP = V3(0, 1, 0);
+
+/** Game-portal integration. Uses the CrazyGames SDK (v3) when the page loaded it; a silent no-op everywhere else. */
+const Portal = {
+  sdk: null, playing: false, adOpen: false, name: window.IA_BUILD || 'standalone',
+  async init() { const cg = window.CrazyGames && window.CrazyGames.SDK; if (!cg) return; try { await Promise.race([cg.init(), new Promise((_, rej) => setTimeout(() => rej(new Error('sdk timeout')), 5000))]); this.sdk = cg; } catch (e) { console.warn('portal SDK unavailable', e && e.message); } },
+  call(fn) { if (this.sdk) try { fn(this.sdk); } catch (e) { /* never let the portal break the game */ } },
+  loading(on) { this.call(s => on ? s.game.loadingStart() : s.game.loadingStop()); },
+  /** tell the portal when the player is actually fighting */
+  gameplay(on) { if (!this.sdk || on === this.playing) return; this.playing = on; this.call(s => on ? s.game.gameplayStart() : s.game.gameplayStop()); },
+  happy() { this.call(s => s.game.happytime()); },
+  /** ad break at a natural pause; resolves when it is over or unavailable. Audio is muted while it shows. */
+  ad(type = 'midgame') { return new Promise(res => { if (!this.sdk) return res(false); let done = false; const fin = ok => { if (done) return; done = true; this.adOpen = false; Bus.emit('adEnd'); res(ok); };
+    try { this.sdk.ad.requestAd(type, { adStarted: () => { this.adOpen = true; Bus.emit('adStart'); }, adFinished: () => fin(true), adError: () => fin(false) }); setTimeout(() => { if (!this.adOpen) fin(false); }, 8000); } catch (e) { fin(false); } }); }
+};
 
 // ───────────────────────── 02-kernel-open.js ─────────────────────────
 /* The sculpting kernel + anatomy live inside one self-contained function so the very same code
@@ -1022,7 +1042,7 @@ void main(){
   float fr = 1.0 - max(dot(N, V), 0.0);
   float rim = smoothstep(0.52, 0.72, fr + wob * 0.6) * smoothstep(-0.15, 0.45, dot(N, uRimDir));
   col += uRimCol * rim * (0.55 + 0.45 * base) * (0.4 + 0.6 * vAO.x);
-  vec3 Hh = normalize(uKeyDir + V); float sp = pow(max(dot(N, Hh), 0.0), mix(18.0, 70.0, gloss));
+  vec3 Hh = normalize(uKeyDir + V); float sp = pow(clamp(dot(N, Hh), 0.0, 1.0), mix(18.0, 70.0, gloss));
   float sweatDots = smoothstep(0.9, 0.97, nHi) * uSweat * isSkin * tLit;
   col += uKeyCol * (smoothstep(0.32, 0.5, sp + wob) * specAmt + sweatDots * 0.14) * shd;
   col = col * uDim + uFlash * vec3(1.0, 0.92, 0.8);
@@ -1030,8 +1050,16 @@ void main(){
 }`;
 
 GLSL.fsVert = /* glsl */`varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+GLSL.sane = /* glsl */`
+vec3 sane(vec3 c){
+#if __VERSION__ >= 300
+  if (any(isnan(c)) || any(isinf(c))) return vec3(0.0);
+#endif
+  return clamp(c, 0.0, 48.0); }
+`;
 GLSL.bloomPre = /* glsl */`uniform sampler2D tMap; uniform vec2 uTexel; uniform float uThresh; varying vec2 vUv;
-void main(){ vec3 c = (texture2D(tMap, vUv + uTexel * vec2(-1,-1)).rgb + texture2D(tMap, vUv + uTexel * vec2(1,-1)).rgb + texture2D(tMap, vUv + uTexel * vec2(-1,1)).rgb + texture2D(tMap, vUv + uTexel * vec2(1,1)).rgb) * 0.25;
+${GLSL.sane}
+void main(){ vec3 c = (sane(texture2D(tMap, vUv + uTexel * vec2(-1,-1)).rgb) + sane(texture2D(tMap, vUv + uTexel * vec2(1,-1)).rgb) + sane(texture2D(tMap, vUv + uTexel * vec2(-1,1)).rgb) + sane(texture2D(tMap, vUv + uTexel * vec2(1,1)).rgb)) * 0.25;
   c = min(c, vec3(12.0)); float l = max(c.r, max(c.g, c.b)); float k = smoothstep(uThresh, uThresh * 2.2, l); gl_FragColor = vec4(c * k, 1.0); }`;
 GLSL.bloomDown = /* glsl */`uniform sampler2D tMap; uniform vec2 uTexel; varying vec2 vUv;
 void main(){ vec3 c = texture2D(tMap, vUv).rgb * 4.0; c += texture2D(tMap, vUv + uTexel * vec2(-1,-1)).rgb + texture2D(tMap, vUv + uTexel * vec2(1,-1)).rgb + texture2D(tMap, vUv + uTexel * vec2(-1,1)).rgb + texture2D(tMap, vUv + uTexel * vec2(1,1)).rgb; gl_FragColor = vec4(c / 8.0, 1.0); }`;
@@ -1042,12 +1070,13 @@ void main(){ vec3 c = texture2D(tMap, vUv + uTexel * vec2(-1,0)).rgb + texture2D
 GLSL.final = /* glsl */`uniform sampler2D tScene, tBloom; uniform vec2 uRes, uCenter; uniform float uBloom, uExposure, uVig, uGrain, uTime, uChroma, uRadial, uDesat, uFade, uFlash, uLetter; uniform vec3 uTint;
 varying vec2 vUv;
 ${GLSL.noise}
+${GLSL.sane}
 void main(){
   vec2 uv = vUv, d = uv - uCenter; vec3 c;
-  if (uRadial > 0.002) { c = vec3(0.0); for (int i = 0; i < 8; i++) { float t = float(i) / 7.0; c += texture2D(tScene, uv - d * uRadial * t).rgb; } c /= 8.0; }
-  else c = texture2D(tScene, uv).rgb;
+  if (uRadial > 0.002) { c = vec3(0.0); for (int i = 0; i < 8; i++) { float t = float(i) / 7.0; c += sane(texture2D(tScene, uv - d * uRadial * t).rgb); } c /= 8.0; }
+  else c = sane(texture2D(tScene, uv).rgb);
   if (uChroma > 0.0005) { c.r = mix(c.r, texture2D(tScene, uv + d * uChroma).r, 0.85); c.b = mix(c.b, texture2D(tScene, uv - d * uChroma).b, 0.85); }
-  c += texture2D(tBloom, uv).rgb * uBloom;
+  c += sane(texture2D(tBloom, uv).rgb) * uBloom;
   c *= uExposure;
   float l = dot(c, vec3(.2126, .7152, .0722));
   c = mix(c, vec3(l) * vec3(1.02, 1.0, 0.96), uDesat);
@@ -1223,7 +1252,7 @@ void main(){
   float n = fbm(vW.xz * 3.0 + vW.y * 2.0);
   vec3 light = uAmbEnv * (0.35 + 0.5 * top) + uPoolCol * pl * (0.25 + 0.75 * smoothstep(0.2, 0.9, top)) * mix(1.0, getShadowMask(), uShade) + uAmbEnv * uHouse * 0.8;
   vec3 col = base * (0.9 + 0.2 * n) * light;
-  float rim = pow(1.0 - max(dot(N, V), 0.0), 3.0); col += uPoolCol * rim * uGloss * pl * 0.5;
+  float rim = pow(clamp(1.0 - dot(N, V), 0.0, 1.0), 3.0); col += uPoolCol * rim * uGloss * pl * 0.5;
   col += uEmis;
   float a = 1.0;
   if (uFadeNear > 0.5) { vec2 cd = normalize(cameraPosition.xz + 1e-4); float facing = dot(normalize(vW.xz), cd); float camR = length(cameraPosition.xz);
@@ -1242,7 +1271,7 @@ void main(){
   a *= 1.0 - smoothstep(-0.05, 0.42, facing) * smoothstep(1.6, 3.2, length(cameraPosition.xz) + 1.2);
   if (a < 0.01) discard;
   float pl = pool(vW.xz) * uPool; vec3 V = normalize(cameraPosition - vW);
-  float glint = pow(max(0.0, 1.0 - abs(dot(normalize(vN), V))), 2.0);
+  float glint = pow(clamp(1.0 - abs(dot(normalize(vN), V)), 0.0, 1.0), 2.0);
   vec3 col = uCol * (uAmbEnv * 0.6 + uPoolCol * pl * (0.25 + 0.6 * glint + 0.35 * line * (0.5 + 0.5 * sin(d.x * 6.283))));
   gl_FragColor = vec4(fogged(col), a * 0.92);
 }`;
@@ -1285,7 +1314,7 @@ GLSL.pointsFrag = /* glsl */`uniform vec3 uCol; varying float vA; void main(){ v
 GLSL.beamVert = /* glsl */`varying vec3 vN; varying vec3 vV; varying float vH; void main(){ vH = uv.y; vec4 wp = modelMatrix * vec4(position, 1.0); vN = normalize(mat3(modelMatrix) * normal); vV = normalize(cameraPosition - wp.xyz); gl_Position = projectionMatrix * viewMatrix * wp; }`;
 GLSL.beamFrag = /* glsl */`uniform vec3 uCol; uniform float uInt, uTime, uSeed; varying vec3 vN; varying vec3 vV; varying float vH;
 ${GLSL.noise}
-void main(){ float e = pow(abs(dot(normalize(vN), normalize(vV))), 1.6); float h = pow(vH, 1.4); float n = 0.75 + 0.25 * vnoise(vec2(vH * 6.0 - uTime * 0.25, uSeed)); gl_FragColor = vec4(uCol * e * h * n * uInt, 1.0); }`;
+void main(){ float e = pow(clamp(abs(dot(normalize(vN), normalize(vV))), 0.0, 1.0), 1.6); float h = pow(clamp(vH, 0.0, 1.0), 1.4); float n = 0.75 + 0.25 * vnoise(vec2(vH * 6.0 - uTime * 0.25, uSeed)); gl_FragColor = vec4(uCol * e * h * n * uInt, 1.0); }`;
 GLSL.screenFrag = /* glsl */`uniform sampler2D uMap; uniform float uGain, uScroll, uTime; uniform vec2 uRep, uPx; varying vec2 vUv;
 void main(){ vec2 uv = vec2(fract(vUv.x * uRep.x + uScroll * uTime), vUv.y * uRep.y); vec3 c = texture2D(uMap, uv).rgb;
   vec2 led = abs(fract(vUv * uPx) - 0.5); float m = smoothstep(0.5, 0.28, max(led.x, led.y)); float flick = 0.96 + 0.04 * sin(uTime * 50.0 + vUv.y * 30.0);
@@ -1391,12 +1420,11 @@ const Arena = {
     const rig = new THREE.Group(); rig.position.y = 7.4; G.add(rig); const truss = prop({ col: '#16171b', gloss: 0.4 });
     const lampGeo = new THREE.CylinderGeometry(0.2, 0.26, 0.34, 10), lensGeo = new THREE.CircleGeometry(0.19, 12);
     this.lensMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(7, 6.2, 4.8) });
-    const beamGeo = new THREE.CylinderGeometry(0.2, 2.5, 7.4, 20, 1, true); beamGeo.translate(0, -3.7, 0); { const uv = beamGeo.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i)); }
     const beamMat = (col, k2, seed) => new THREE.ShaderMaterial({ vertexShader: GLSL.beamVert, fragmentShader: GLSL.beamFrag, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, uniforms: { uCol: { value: new THREE.Color(col) }, uInt: { value: k2 }, uTime: Gfx.L.uTime, uSeed: { value: seed } } });
     for (let i = 0; i < 8; i++) { const a = i * PI / 4, r = 4.9, b = mesh(new THREE.BoxGeometry(4.2, 0.28, 0.28), truss, { pos: [Math.cos(a) * r, 0, Math.sin(a) * r], rot: [0, -a + PI / 2, 0], parent: rig });
       mesh(new THREE.BoxGeometry(4.2, 0.06, 0.06), truss, { pos: [0, 0.5, 0], parent: b }); for (let j = -3; j <= 3; j++) mesh(new THREE.BoxGeometry(0.05, 0.5, 0.05), truss, { pos: [j * 0.65, 0.25, 0], rot: [0, 0, j % 2 ? 0.5 : -0.5], parent: b });
       for (const off of [-1.1, 1.1]) { const l = mesh(lampGeo, truss, { pos: [off, -0.28, 0], parent: b }); mesh(lensGeo, this.lensMat, { pos: [0, -0.171, 0], rot: [PI / 2, 0, 0], parent: l }); }
-      const bm = mesh(beamGeo, beamMat('#ffe6b8', 0.05, i), { pos: [Math.cos(a) * r, -0.3, Math.sin(a) * r], parent: rig }); bm.lookAt(Math.cos(a) * 1.2, 0.4, Math.sin(a) * 1.2); bm.rotateX(-PI / 2); bm.renderOrder = 8; this.beams.push({ m: bm, base: 0.05, kind: 'key' }); }
+      }   // (no light cones over the cage: on some mobile GPUs they washed out the whole fight)
     mesh(new THREE.BoxGeometry(0.3, 0.3, 9.8), truss, { parent: rig }); mesh(new THREE.BoxGeometry(9.8, 0.3, 0.3), truss, { parent: rig });
     // moving heads on an outer ring: slow drift in a fight, sweeping in intros
     this.movers = []; const mvGeo = new THREE.CylinderGeometry(0.12, 1.3, 26, 14, 1, true); mvGeo.translate(0, -13, 0);
@@ -1439,7 +1467,7 @@ const Arena = {
     return this;
   },
   MOODS: {
-    fight:  { key: [1.46, 1.34, 1.16], amb: [0.5, 0.49, 0.56], ambB: [0.3, 0.27, 0.3], pool: 1.0, env: [0.16, 0.17, 0.22], beams: 1, movers: 0.45, crowd: 1.0, house: 0, rim: [0.75, 0.9, 1.25], exp: 1.0 },
+    fight:  { key: [1.46, 1.34, 1.16], amb: [0.5, 0.49, 0.56], ambB: [0.3, 0.27, 0.3], pool: 1.0, env: [0.16, 0.17, 0.22], beams: 1, movers: 0, crowd: 1.0, house: 0, rim: [0.75, 0.9, 1.25], exp: 1.0 },
     intro:  { key: [1.25, 1.1, 0.9], amb: [0.2, 0.22, 0.32], ambB: [0.1, 0.1, 0.16], pool: 0.1, env: [0.07, 0.08, 0.13], beams: 0.25, movers: 1.6, crowd: 0.6, house: 0, rim: [0.9, 1.1, 1.7], exp: 1.05 },
     gym:    { key: [1.3, 1.24, 1.12], amb: [0.6, 0.6, 0.64], ambB: [0.36, 0.34, 0.36], pool: 0.85, env: [0.2, 0.21, 0.25], beams: 0.5, movers: 0.0, crowd: 0.5, house: 0.5, rim: [0.5, 0.6, 0.8], exp: 1.0 },
     ko:     { key: [1.6, 1.4, 1.1], amb: [0.42, 0.42, 0.52], ambB: [0.24, 0.22, 0.28], pool: 1.1, env: [0.15, 0.16, 0.22], beams: 1.2, movers: 1.2, crowd: 1.25, house: 0, rim: [0.9, 1.05, 1.5], exp: 1.0 },
@@ -1461,7 +1489,7 @@ const Arena = {
     this.flashes.material.uniforms.uRate.value = 0.012 + this.excite * 0.1 + this.flash * 0.5;
     for (const b of this.beams) b.m.material.uniforms.uInt.value = b.base * m.beams;
     for (const mv of this.movers) { const sw = this.moodName === 'intro' || this.moodName === 'ko' || this.moodName === 'menu' ? 1 : 0.25, t = this.t * (0.35 + 0.5 * sw) + mv.ph;
-      _v1.set(Math.sin(t * 0.9) * 6 * sw + Math.cos(mv.a) * 2, 0, Math.cos(t * 0.7) * 6 * sw + Math.sin(mv.a) * 2); mv.piv.lookAt(_v1); mv.piv.rotateX(-PI / 2); mv.m.material.uniforms.uInt.value = 0.035 * m.movers; }
+      _v1.set(Math.sin(t * 0.9) * 6 * sw + Math.cos(mv.a) * 2, 0, Math.cos(t * 0.7) * 6 * sw + Math.sin(mv.a) * 2); mv.piv.lookAt(_v1); mv.piv.rotateX(-PI / 2); mv.m.material.uniforms.uInt.value = 0.035 * m.movers; mv.m.visible = m.movers > 0.03 && !IS_TOUCH; }   // sweeping beams only in presentation moods, never during a fight
     // character light: mostly overhead, pulled toward the camera so the visible side always reads
     if (cam) { _v1.copy(cam.position).setY(0).normalize(); _v2.set(-_v1.z, 0, _v1.x); L.uKeyDir.value.set(_v1.x * 0.3 + _v2.x * 0.5, 0.8, _v1.z * 0.3 + _v2.z * 0.5).normalize();
       L.uFillDir.value.set(_v1.x * 0.5 - _v2.x * 0.7, 0.15, _v1.z * 0.5 - _v2.z * 0.7).normalize(); L.uRimDir.value.set(-_v1.x * 0.85 - _v2.x * 0.3, 0.4, -_v1.z * 0.85 - _v2.z * 0.3).normalize(); }
@@ -2695,7 +2723,7 @@ const Cam = {
   play(shot) { this.shot = { t: 0, ...shot }; this.mode = 'shot'; },
   kick(dir, mag) { this.kickV.addScaledVector(dir, mag * 2.2); this.rollV += (rand() - 0.5) * mag * 1.4; this.fovKick = Math.max(this.fovKick, mag * 2.6); },
   update(dt, M, snap) {
-    this.t += dt; const cam = this.cam, asp = cam.aspect, wide = Math.max(1, 1.62 / asp);
+    this.t += dt; const cam = this.cam, asp = cam.aspect, wide = Math.max(1, 1.27 / asp) * (this.zoom || 1);   // zoom < 1 frames tighter (used for portrait preview videos)
     let P = _v1, T = _v2, fov = this.fov;
     if (this.mode === 'shot' && this.shot) {
       const s = this.shot; s.t += dt; const u = clamp01(s.t / s.dur), e = (s.ease || Ease.io)(u);
@@ -2814,6 +2842,7 @@ const Sfx = {
   },
   /** output level right now (used by the automated test to prove sound is produced) */
   rms() { if (!this.an) return 0; const d = new Float32Array(this.an.fftSize); this.an.getFloatTimeDomainData(d); let s = 0; for (let i = 0; i < d.length; i++) s += d[i] * d[i]; return Math.sqrt(s / d.length); },
+  mute(on) { if (this.ctx) this.master.gain.setTargetAtTime(on ? 0 : Store.data.vol.master, this.ctx.currentTime, 0.03); },
   setVol() { if (!this.ctx) return; const v = Store.data.vol, t = this.ctx.currentTime; this.master.gain.setTargetAtTime(v.master, t, 0.05); this.bSfx.gain.setTargetAtTime(v.sfx, t, 0.05); this.bCrowd.gain.setTargetAtTime(v.crowd * 0.9, t, 0.05); this.bMusic.gain.setTargetAtTime(v.music * 0.8, t, 0.05); },
   noise(buf, loop) { const s = this.ctx.createBufferSource(); s.buffer = buf || this.noiseBuf; s.loop = !!loop; if (!loop) s.playbackRate.value = 0.8 + Math.random() * 0.4; return s; },
   pan(x) { const c = this.ctx; if (!c.createStereoPanner) return null; const p = c.createStereoPanner(); p.pan.value = clamp(x, -0.8, 0.8); return p; },
@@ -2888,6 +2917,7 @@ const BIND_LABEL = { up: 'Move away', down: 'Move toward camera', left: 'Move le
 const Input = {
   mx: 0, my: 0, guard: false, queue: [], down: new Set(), binds: null, byCode: {}, lastAtk: null, joy: { on: false, id: -1, ox: 0, oy: 0, x: 0, y: 0 }, tGuard: false, pad: { prev: [] }, labels: {}, any: false, capture: null, kbUsed: false, touchUsed: false,
   init() {
+    if (window.IA_BUILD === 'crazygames') BIND0.pause = 'Backspace';      // Esc leaves fullscreen on portals
     this.binds = { ...BIND0, ...(Store.data.binds || {}) }; this.index();
     try { if (navigator.keyboard && navigator.keyboard.getLayoutMap) navigator.keyboard.getLayoutMap().then(m => { m.forEach((v, k) => this.labels[k] = v.toUpperCase()); Bus.emit('labels'); }).catch(() => {}); } catch (e) { /* not available in this frame */ }
     addEventListener('keydown', e => this.key(e, true), { passive: false }); addEventListener('keyup', e => this.key(e, false));
@@ -2899,9 +2929,9 @@ const Input = {
     for (const ev of ['touchmove', 'gesturestart', 'gesturechange']) document.addEventListener(ev, e => { if (!e.target.closest || !e.target.closest('.scroll')) e.preventDefault(); }, { passive: false });
     addEventListener('gamepadconnected', () => Bus.emit('pad', true));
   },
-  index() { this.byCode = {}; for (const a in this.binds) this.byCode[this.binds[a]] = a; this.byCode.ArrowUp = 'up'; this.byCode.ArrowDown = 'down'; this.byCode.ArrowLeft = 'left'; this.byCode.ArrowRight = 'right'; if (!this.byCode.ShiftRight) this.byCode.ShiftRight = 'evade'; },
+  index() { this.byCode = {}; for (const a in this.binds) this.byCode[this.binds[a]] = a; this.byCode.ArrowUp = 'up'; this.byCode.ArrowDown = 'down'; this.byCode.ArrowLeft = 'left'; this.byCode.ArrowRight = 'right'; if (!this.byCode.ShiftRight) this.byCode.ShiftRight = 'evade'; if (!this.byCode.Escape) this.byCode.Escape = 'pause'; if (!this.byCode.Backspace) this.byCode.Backspace = 'pause'; },
   label(action) { const c = this.binds[action]; return this.codeLabel(c); },
-  codeLabel(c) { if (!c) return '—'; if (this.labels[c]) return this.labels[c]; const m = { Space: 'SPACE', ShiftLeft: 'SHIFT', ShiftRight: 'R-SHIFT', Semicolon: ';', Comma: ',', Period: '.', Slash: '/', Escape: 'ESC', Enter: 'ENTER', Quote: "'", BracketLeft: '[', BracketRight: ']', Backslash: '\\', Minus: '-', Equal: '=', Tab: 'TAB', ControlLeft: 'CTRL', AltLeft: 'ALT', CapsLock: 'CAPS', Backquote: '`' };
+  codeLabel(c) { if (!c) return '—'; if (this.labels[c]) return this.labels[c]; const m = { Space: 'SPACE', ShiftLeft: 'SHIFT', ShiftRight: 'R-SHIFT', Semicolon: ';', Comma: ',', Period: '.', Slash: '/', Escape: 'ESC', Backspace: 'BKSP', Enter: 'ENTER', Quote: "'", BracketLeft: '[', BracketRight: ']', Backslash: '\\', Minus: '-', Equal: '=', Tab: 'TAB', ControlLeft: 'CTRL', AltLeft: 'ALT', CapsLock: 'CAPS', Backquote: '`' };
     return m[c] || c.replace(/^Key|^Digit/, '').replace(/^Arrow/, '').toUpperCase(); },
   rebind(action, code) { for (const a in this.binds) if (this.binds[a] === code && a !== action) this.binds[a] = this.binds[action]; this.binds[action] = code; Store.data.binds = this.binds; Store.save(); this.index(); },
   resetBinds() { this.binds = { ...BIND0 }; Store.data.binds = null; Store.save(); this.index(); },
@@ -3322,6 +3352,7 @@ const Game = {
       else if (this.paused) h = 0;
       if (this.pv && this.pv.anim && !M) { const p = this.pv; p.anim.update(dt); p.model.face.update(dt); p.anim.pt('ballL', _v1); Arena.blob(0, _v1.x, _v1.z, 0.15, 0.6); p.anim.pt('ballR', _v1); Arena.blob(1, _v1.x, _v1.z, 0.15, 0.6); }
       Cam.update(this.paused ? 0.0001 : dt, M); }
+    Portal.gameplay(!!(M && M.state === 'fight' && !M.over && !this.paused && !Replay.active && M.o.p1ai == null && !Portal.adOpen));
     Arena.update(dt, Gfx.camera); Vfx.update(h, Gfx.camera); Sfx.update(dt, this.paused ? null : M); Gfx.tick(dt); UI.tick(dt); if (M && UI.el.hud) UI.hudUpdate(M);
     if (render) Gfx.render(dt);
   },
@@ -3336,7 +3367,7 @@ const Game = {
   *bootFlow() {
     const sp = UI.splash(), first = !Store.data.tutorialDone || QS.has('tutorial'), a = fighterDef(first ? 'vale' : this.sel.me), b = fighterDef(first ? 'okafor' : 'duarte' === a.id ? 'vale' : 'duarte'); let n = 0;
     const bump = () => { sp.bar.style.transform = `scaleX(${++n / 4})`; }; Models.get(a).then(bump); Models.get(b).then(bump);
-    yield this.loadPair(a, b).then(() => { n = 3; bump(); });
+    yield this.loadPair(a, b).then(() => { n = 3; bump(); }); Portal.loading(false);
     sp.go.textContent = IS_TOUCH ? 'Tap to begin' : 'Press any key'; sp.go.classList.add('blink'); this.anyKey = false;
     while (!this.anyKey && !QS.has('autostart')) yield null;
     Sfx.unlock(); Sfx.ui('ok'); UI.fade(1); yield 0.32; UI.closeScreen();
@@ -3355,6 +3386,7 @@ const Game = {
   // ── a fight ────────────────────────────────────────────────────────────
   *fightFlow(o) {
     const a = fighterDef(o.me), b = fighterDef(o.opp); let models; this.lastFight = o; this.mode = 'fight'; this.cine = true; UI.fade(1); UI.hudShow(false); Tutorial.stop(); yield 0.32; UI.closeScreen(); UI.clearCard();
+    if (Portal.sdk && this.fightsDone > 0 && o.auto == null) yield Portal.ad('midgame');      // a natural break: between fights, never during one
     yield this.loadPair(a, b).then(m => models = m);
     const M = this.newMatch({ a, b, models, mode: 'fight', level: o.level, p1ai: o.auto, rules: { rounds: o.rounds, roundTime: o.rounds === 1 ? 120 : 75 } });
     if (!o.quick) yield* this.introFlow(); else { Arena.setMood('fight', true); UI.fade(0); }
@@ -3401,6 +3433,7 @@ const Game = {
       if (!L.down) { L.setState('cine'); L.cineFace = 'tired'; L.anim.play('loseSlump', { hold: true, blendIn: 0.5 }); }
       Cam.focus = null; Cam.play({ dur: 3.4, ease: Ease.out, from: { pos: W.pos.clone().addScaledVector(fw, 2.9).addScaledVector(sx, 1.3).setY(0.7), tgt: W.pos.clone().setY(1.25 * s), fov: 32 }, to: { pos: W.pos.clone().addScaledVector(fw, 2.6).addScaledVector(sx, -0.9).setY(1.05), tgt: W.pos.clone().setY(1.4 * s), fov: 30 } });
       UI.lower(W, false); Sfx.sting(M.o.p1ai != null || w === 0 ? 'win' : 'lose'); Arena.cheer(1, 4); Arena.flashBurst(1); Arena.spot(0, W.pos.x, W.pos.z, 2, 0.8); yield { t: 3.2, skip: true }; }
+    this.fightsDone = (this.fightsDone || 0) + 1; if (w === 0 && M.o.p1ai == null) Portal.happy();
     this.note = this.progress(r); UI.clearCard(); UI.hudShow(false); Arena.setMood('menu'); UI.results(M, this, this.note);
   },
   progress(r) { const M = this.M, S = Store.data; if (M.mode !== 'fight' || M.o.p1ai != null) return ''; S.fights++; const before = S.wins; let note = '';
@@ -3441,10 +3474,12 @@ const Game = {
   closePanel() { Input.capture = null; UI.closeScreen(); this.paused = false; Sfx.ui('back'); if (this.mode === 'hub') UI.hub(this); },
   async boot() {
     await Promise.race([Promise.all(['italic 800 48px', '600 20px', '800 48px', '700 20px'].map(f => document.fonts.load(f + ' "Barlow Condensed"'))), new Promise(r => setTimeout(r, 2500))]).catch(() => {});
-    Gfx.init(); Cam.init(); Input.init(); Sculptor.init(); IA.Gfx = Gfx; IA.Arena = Arena;
+    await Portal.init(); Portal.loading(true); if (Portal.sdk) Store.attach(Portal.sdk.data);
+    Gfx.init(); Cam.init(); Input.init(); Sculptor.init(); IA.Gfx = Gfx; IA.Arena = Arena; IA.Portal = Portal;
     if (QS.has('view')) { debugView(); return; }
     Arena.build(); Vfx.init(); Replay.init(); UI.init();
     Bus.on('anykey', () => { this.anyKey = true; Sfx.unlock(); });
+    Bus.on('adStart', () => Sfx.mute(true)); Bus.on('adEnd', () => Sfx.mute(false));
     Bus.on('confirm', () => { this.skipReq = true; if (Replay.active) Replay.stop(); else if (this.mode === 'practice' && !this.paused && !UI.mode && !this.co) this.run(this.hubFlow()); });
     Bus.on('pause', () => { if (Replay.active) Replay.stop(); else this.togglePause(); });
     Bus.on('roundEnd', e => { if (!e.last) this.run(this.roundBreak(e)); });
@@ -3461,6 +3496,10 @@ const Game = {
     IA.Game = this; IA.Sculptor = Sculptor; IA.Models = Models; IA.AICtrl = AICtrl; IA.Bus = Bus; IA.Input = Input; IA.Cam = Cam; IA.MOVES = MOVES; IA.UI = UI; IA.Replay = Replay; IA.Tutorial = Tutorial; IA.Store = Store; IA.Sfx = Sfx;
     IA.dbg.step = (sec, dt = 1 / 60) => { for (let t = 0; t < sec; t += dt) this.step(dt, false); };
     IA.dbg.render = () => Gfx.render(0);
+    /** restart the current match from a fully reproducible state (used to capture videos of a known sequence) */
+    IA.dbg.seededStart = seed => { const M = this.M; reseed(seed); this.co = null; this.cues.length = 0; UI.timers.length = 0; UI.clearCard(); M.restart(); M.simT = 0; Replay.clear();
+      M.f.forEach((f, i) => { const A = f.anim; A.t = rand() * 10; A.bph = rand() * TAU; A.bnc = rand() * TAU; A.gW = A.gL = 0; A.fatigue = A.wobble = A.shake = 0; A.spin = 0; A.settle = 0; A.stepCool = 0; A.noStep = 0; A.layer.clip = null; A.layer.s = 1; f.flash = 0; f.atCage = 0; f.wasGuard = false; f.ctrl = new AICtrl(f, 2, M); f.model.face.blinkT = 1 + rand() * 3; f.model.face.blink = 0; });
+      M.resetPositions(); for (let i = 0; i < 4; i++) M.tick(1 / 60); Cam.mode = 'fight'; Cam.focus = null; Cam.kickP.set(0, 0, 0); Cam.kickV.set(0, 0, 0); Cam.snap(M); Arena.excite = 0.06; Arena.exciteT = 0; Arena.flash = 0; Arena.setMood('fight', true); Gfx.fx.radial = Gfx.fx.chroma = Gfx.fx.flash = 0; UI.hudShow(true); UI.fade(0, true); M.start(); };
     IA.dbg.state = () => { const M = this.M; return { mode: this.mode, ui: UI.mode, co: !!this.co, paused: this.paused, tut: Tutorial.active ? Tutorial.tset[Tutorial.i].id + ':' + Tutorial.count.toFixed(1) : null, M: M && { t: +M.simT.toFixed(2), state: M.state, round: M.round, time: +M.time.toFixed(1), over: M.over, result: M.result, scores: M.scores, f: M.f.map(f => ({ id: f.def.id, hp: +f.hp.toFixed(1), st: +f.st.toFixed(0), cap: +f.stCap.toFixed(0), state: f.state, daze: +f.daze.toFixed(0), guard: +f.guard.toFixed(0), cond: Object.fromEntries(Object.entries(f.cond).map(([k, v]) => [k, Math.round(v)])), pos: [+f.pos.x.toFixed(2), +f.pos.z.toFixed(2)], stats: f.stats, move: f.move && f.move.id })) } }; };
     IA.dbg.exchange = (atk, def, delay = 0, dist = 0.9) => { const M = this.M; M.restart(); M.rules.noClock = true; M.state = 'fight'; const [a, b] = M.f; a.ctrl.passive = b.ctrl.passive = true; if (!a.ctrl.think.patched) { const A = new AICtrl(a, 0, M); A.passive = true; a.ctrl = A; } a.place(-dist / 2, 0, PI / 2); b.place(dist / 2, 0, -PI / 2);
       const ev = [], on = n => Bus.on(n, e => ev.push(n + (e.type ? ':' + e.type : '') + (e.perfect ? ':perfect' : '') + (e.clean ? ':clean' : '') + (e.counter ? ':counter' : '') + (e.kd ? ':kd' : '') + (e.dmg != null ? ':' + e.dmg.toFixed(1) : ''))), hs = ['hit', 'whiff', 'evaded', 'knockdown'].map(n => [n, on(n)]);

@@ -4,7 +4,7 @@
    input → replay → UI → tutorial → game flow. */
 
 const THREE_VERSION = '0.160.0';
-const THREE_URLS = [
+const THREE_URLS = window.IA_THREE ? [window.IA_THREE] : [
   `https://cdn.jsdelivr.net/npm/three@${THREE_VERSION}/build/three.module.min.js`,
   `https://unpkg.com/three@${THREE_VERSION}/build/three.module.min.js`,
   `https://cdnjs.cloudflare.com/ajax/libs/three.js/${THREE_VERSION}/three.module.min.js`,
@@ -60,7 +60,10 @@ function RNG(seed) {
   f.chance = p => f() < p;
   return f;
 }
-const rand = RNG((Date.now() ^ 0x9e3779b9) >>> 0);   // gameplay randomness
+let _rs = RNG((Date.now() ^ 0x9e3779b9) >>> 0);
+const rand = () => _rs();   // gameplay randomness (re-seedable so captures can be reproduced)
+rand.range = (lo, hi) => lo + (hi - lo) * _rs(); rand.int = (lo, hi) => Math.floor(rand.range(lo, hi + 1)); rand.pick = arr => arr[Math.floor(_rs() * arr.length)]; rand.chance = p => _rs() < p;
+const reseed = n => { _rs = RNG(n >>> 0); Math.random = RNG((n ^ 0x5bd1e995) >>> 0); };
 
 /** critically-damped spring for scalars */
 class Spring {
@@ -93,7 +96,10 @@ const Store = {
     this.data = Object.assign({ tutorialDone: false, wins: 0, losses: 0, kos: 0, fights: 0, beaten: {}, binds: null, vol: { master: .9, sfx: 1, crowd: .8, music: .6 }, quality: 'auto', difficulty: 1, lastFighter: 'vale', rounds: 3 }, this.data || {});
     return this.data;
   },
-  save() { try { localStorage.setItem(this.key, JSON.stringify(this.data)); } catch (e) { /* private mode */ } }
+  ext: null,
+  save() { const j = JSON.stringify(this.data); try { localStorage.setItem(this.key, j); } catch (e) { /* private mode */ } if (this.ext) try { this.ext.setItem(this.key, j); } catch (e) { /* portal storage unavailable */ } },
+  /** adopt a portal's cloud-synced storage (same getItem / setItem shape as localStorage) */
+  attach(ext) { if (!ext || !ext.getItem) return; this.ext = ext; const use = v => { if (!v) return; try { Object.assign(this.data, JSON.parse(v)); } catch (e) {} }; try { const v = ext.getItem(this.key); if (v && v.then) v.then(use, () => {}); else use(v); } catch (e) {} }
 };
 Store.load();
 
@@ -104,3 +110,17 @@ const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THRE
 const _m1 = new THREE.Matrix4(), _m2 = new THREE.Matrix4();
 const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const UP = V3(0, 1, 0);
+
+/** Game-portal integration. Uses the CrazyGames SDK (v3) when the page loaded it; a silent no-op everywhere else. */
+const Portal = {
+  sdk: null, playing: false, adOpen: false, name: window.IA_BUILD || 'standalone',
+  async init() { const cg = window.CrazyGames && window.CrazyGames.SDK; if (!cg) return; try { await Promise.race([cg.init(), new Promise((_, rej) => setTimeout(() => rej(new Error('sdk timeout')), 5000))]); this.sdk = cg; } catch (e) { console.warn('portal SDK unavailable', e && e.message); } },
+  call(fn) { if (this.sdk) try { fn(this.sdk); } catch (e) { /* never let the portal break the game */ } },
+  loading(on) { this.call(s => on ? s.game.loadingStart() : s.game.loadingStop()); },
+  /** tell the portal when the player is actually fighting */
+  gameplay(on) { if (!this.sdk || on === this.playing) return; this.playing = on; this.call(s => on ? s.game.gameplayStart() : s.game.gameplayStop()); },
+  happy() { this.call(s => s.game.happytime()); },
+  /** ad break at a natural pause; resolves when it is over or unavailable. Audio is muted while it shows. */
+  ad(type = 'midgame') { return new Promise(res => { if (!this.sdk) return res(false); let done = false; const fin = ok => { if (done) return; done = true; this.adOpen = false; Bus.emit('adEnd'); res(ok); };
+    try { this.sdk.ad.requestAd(type, { adStarted: () => { this.adOpen = true; Bus.emit('adStart'); }, adFinished: () => fin(true), adError: () => fin(false) }); setTimeout(() => { if (!this.adOpen) fin(false); }, 8000); } catch (e) { fin(false); } }); }
+};

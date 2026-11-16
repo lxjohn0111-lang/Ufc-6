@@ -10,6 +10,7 @@ const BIND_LABEL = { up: 'Move away', down: 'Move toward camera', left: 'Move le
 const Input = {
   mx: 0, my: 0, guard: false, queue: [], down: new Set(), binds: null, byCode: {}, lastAtk: null, joy: { on: false, id: -1, ox: 0, oy: 0, x: 0, y: 0 }, tGuard: false, pad: { prev: [] }, labels: {}, any: false, capture: null, kbUsed: false, touchUsed: false,
   init() {
+    if (window.IA_BUILD === 'crazygames') BIND0.pause = 'Backspace';      // Esc leaves fullscreen on portals
     this.binds = { ...BIND0, ...(Store.data.binds || {}) }; this.index();
     try { if (navigator.keyboard && navigator.keyboard.getLayoutMap) navigator.keyboard.getLayoutMap().then(m => { m.forEach((v, k) => this.labels[k] = v.toUpperCase()); Bus.emit('labels'); }).catch(() => {}); } catch (e) { /* not available in this frame */ }
     addEventListener('keydown', e => this.key(e, true), { passive: false }); addEventListener('keyup', e => this.key(e, false));
@@ -21,9 +22,9 @@ const Input = {
     for (const ev of ['touchmove', 'gesturestart', 'gesturechange']) document.addEventListener(ev, e => { if (!e.target.closest || !e.target.closest('.scroll')) e.preventDefault(); }, { passive: false });
     addEventListener('gamepadconnected', () => Bus.emit('pad', true));
   },
-  index() { this.byCode = {}; for (const a in this.binds) this.byCode[this.binds[a]] = a; this.byCode.ArrowUp = 'up'; this.byCode.ArrowDown = 'down'; this.byCode.ArrowLeft = 'left'; this.byCode.ArrowRight = 'right'; if (!this.byCode.ShiftRight) this.byCode.ShiftRight = 'evade'; },
+  index() { this.byCode = {}; for (const a in this.binds) this.byCode[this.binds[a]] = a; this.byCode.ArrowUp = 'up'; this.byCode.ArrowDown = 'down'; this.byCode.ArrowLeft = 'left'; this.byCode.ArrowRight = 'right'; if (!this.byCode.ShiftRight) this.byCode.ShiftRight = 'evade'; if (!this.byCode.Escape) this.byCode.Escape = 'pause'; if (!this.byCode.Backspace) this.byCode.Backspace = 'pause'; },
   label(action) { const c = this.binds[action]; return this.codeLabel(c); },
-  codeLabel(c) { if (!c) return '—'; if (this.labels[c]) return this.labels[c]; const m = { Space: 'SPACE', ShiftLeft: 'SHIFT', ShiftRight: 'R-SHIFT', Semicolon: ';', Comma: ',', Period: '.', Slash: '/', Escape: 'ESC', Enter: 'ENTER', Quote: "'", BracketLeft: '[', BracketRight: ']', Backslash: '\\', Minus: '-', Equal: '=', Tab: 'TAB', ControlLeft: 'CTRL', AltLeft: 'ALT', CapsLock: 'CAPS', Backquote: '`' };
+  codeLabel(c) { if (!c) return '—'; if (this.labels[c]) return this.labels[c]; const m = { Space: 'SPACE', ShiftLeft: 'SHIFT', ShiftRight: 'R-SHIFT', Semicolon: ';', Comma: ',', Period: '.', Slash: '/', Escape: 'ESC', Backspace: 'BKSP', Enter: 'ENTER', Quote: "'", BracketLeft: '[', BracketRight: ']', Backslash: '\\', Minus: '-', Equal: '=', Tab: 'TAB', ControlLeft: 'CTRL', AltLeft: 'ALT', CapsLock: 'CAPS', Backquote: '`' };
     return m[c] || c.replace(/^Key|^Digit/, '').replace(/^Arrow/, '').toUpperCase(); },
   rebind(action, code) { for (const a in this.binds) if (this.binds[a] === code && a !== action) this.binds[a] = this.binds[action]; this.binds[action] = code; Store.data.binds = this.binds; Store.save(); this.index(); },
   resetBinds() { this.binds = { ...BIND0 }; Store.data.binds = null; Store.save(); this.index(); },

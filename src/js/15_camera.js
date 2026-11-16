@@ -10,7 +10,7 @@ const Cam = {
   play(shot) { this.shot = { t: 0, ...shot }; this.mode = 'shot'; },
   kick(dir, mag) { this.kickV.addScaledVector(dir, mag * 2.2); this.rollV += (rand() - 0.5) * mag * 1.4; this.fovKick = Math.max(this.fovKick, mag * 2.6); },
   update(dt, M, snap) {
-    this.t += dt; const cam = this.cam, asp = cam.aspect, wide = Math.max(1, 1.62 / asp);
+    this.t += dt; const cam = this.cam, asp = cam.aspect, wide = Math.max(1, 1.27 / asp) * (this.zoom || 1);   // zoom < 1 frames tighter (used for portrait preview videos)
     let P = _v1, T = _v2, fov = this.fov;
     if (this.mode === 'shot' && this.shot) {
       const s = this.shot; s.t += dt; const u = clamp01(s.t / s.dur), e = (s.ease || Ease.io)(u);

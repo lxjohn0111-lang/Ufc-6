@@ -58,7 +58,7 @@ void main(){
   float n = fbm(vW.xz * 3.0 + vW.y * 2.0);
   vec3 light = uAmbEnv * (0.35 + 0.5 * top) + uPoolCol * pl * (0.25 + 0.75 * smoothstep(0.2, 0.9, top)) * mix(1.0, getShadowMask(), uShade) + uAmbEnv * uHouse * 0.8;
   vec3 col = base * (0.9 + 0.2 * n) * light;
-  float rim = pow(1.0 - max(dot(N, V), 0.0), 3.0); col += uPoolCol * rim * uGloss * pl * 0.5;
+  float rim = pow(clamp(1.0 - dot(N, V), 0.0, 1.0), 3.0); col += uPoolCol * rim * uGloss * pl * 0.5;
   col += uEmis;
   float a = 1.0;
   if (uFadeNear > 0.5) { vec2 cd = normalize(cameraPosition.xz + 1e-4); float facing = dot(normalize(vW.xz), cd); float camR = length(cameraPosition.xz);
@@ -77,7 +77,7 @@ void main(){
   a *= 1.0 - smoothstep(-0.05, 0.42, facing) * smoothstep(1.6, 3.2, length(cameraPosition.xz) + 1.2);
   if (a < 0.01) discard;
   float pl = pool(vW.xz) * uPool; vec3 V = normalize(cameraPosition - vW);
-  float glint = pow(max(0.0, 1.0 - abs(dot(normalize(vN), V))), 2.0);
+  float glint = pow(clamp(1.0 - abs(dot(normalize(vN), V)), 0.0, 1.0), 2.0);
   vec3 col = uCol * (uAmbEnv * 0.6 + uPoolCol * pl * (0.25 + 0.6 * glint + 0.35 * line * (0.5 + 0.5 * sin(d.x * 6.283))));
   gl_FragColor = vec4(fogged(col), a * 0.92);
 }`;
@@ -120,7 +120,7 @@ GLSL.pointsFrag = /* glsl */`uniform vec3 uCol; varying float vA; void main(){ v
 GLSL.beamVert = /* glsl */`varying vec3 vN; varying vec3 vV; varying float vH; void main(){ vH = uv.y; vec4 wp = modelMatrix * vec4(position, 1.0); vN = normalize(mat3(modelMatrix) * normal); vV = normalize(cameraPosition - wp.xyz); gl_Position = projectionMatrix * viewMatrix * wp; }`;
 GLSL.beamFrag = /* glsl */`uniform vec3 uCol; uniform float uInt, uTime, uSeed; varying vec3 vN; varying vec3 vV; varying float vH;
 ${GLSL.noise}
-void main(){ float e = pow(abs(dot(normalize(vN), normalize(vV))), 1.6); float h = pow(vH, 1.4); float n = 0.75 + 0.25 * vnoise(vec2(vH * 6.0 - uTime * 0.25, uSeed)); gl_FragColor = vec4(uCol * e * h * n * uInt, 1.0); }`;
+void main(){ float e = pow(clamp(abs(dot(normalize(vN), normalize(vV))), 0.0, 1.0), 1.6); float h = pow(clamp(vH, 0.0, 1.0), 1.4); float n = 0.75 + 0.25 * vnoise(vec2(vH * 6.0 - uTime * 0.25, uSeed)); gl_FragColor = vec4(uCol * e * h * n * uInt, 1.0); }`;
 GLSL.screenFrag = /* glsl */`uniform sampler2D uMap; uniform float uGain, uScroll, uTime; uniform vec2 uRep, uPx; varying vec2 vUv;
 void main(){ vec2 uv = vec2(fract(vUv.x * uRep.x + uScroll * uTime), vUv.y * uRep.y); vec3 c = texture2D(uMap, uv).rgb;
   vec2 led = abs(fract(vUv * uPx) - 0.5); float m = smoothstep(0.5, 0.28, max(led.x, led.y)); float flick = 0.96 + 0.04 * sin(uTime * 50.0 + vUv.y * 30.0);
@@ -226,12 +226,11 @@ const Arena = {
     const rig = new THREE.Group(); rig.position.y = 7.4; G.add(rig); const truss = prop({ col: '#16171b', gloss: 0.4 });
     const lampGeo = new THREE.CylinderGeometry(0.2, 0.26, 0.34, 10), lensGeo = new THREE.CircleGeometry(0.19, 12);
     this.lensMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(7, 6.2, 4.8) });
-    const beamGeo = new THREE.CylinderGeometry(0.2, 2.5, 7.4, 20, 1, true); beamGeo.translate(0, -3.7, 0); { const uv = beamGeo.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i)); }
     const beamMat = (col, k2, seed) => new THREE.ShaderMaterial({ vertexShader: GLSL.beamVert, fragmentShader: GLSL.beamFrag, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, uniforms: { uCol: { value: new THREE.Color(col) }, uInt: { value: k2 }, uTime: Gfx.L.uTime, uSeed: { value: seed } } });
     for (let i = 0; i < 8; i++) { const a = i * PI / 4, r = 4.9, b = mesh(new THREE.BoxGeometry(4.2, 0.28, 0.28), truss, { pos: [Math.cos(a) * r, 0, Math.sin(a) * r], rot: [0, -a + PI / 2, 0], parent: rig });
       mesh(new THREE.BoxGeometry(4.2, 0.06, 0.06), truss, { pos: [0, 0.5, 0], parent: b }); for (let j = -3; j <= 3; j++) mesh(new THREE.BoxGeometry(0.05, 0.5, 0.05), truss, { pos: [j * 0.65, 0.25, 0], rot: [0, 0, j % 2 ? 0.5 : -0.5], parent: b });
       for (const off of [-1.1, 1.1]) { const l = mesh(lampGeo, truss, { pos: [off, -0.28, 0], parent: b }); mesh(lensGeo, this.lensMat, { pos: [0, -0.171, 0], rot: [PI / 2, 0, 0], parent: l }); }
-      const bm = mesh(beamGeo, beamMat('#ffe6b8', 0.05, i), { pos: [Math.cos(a) * r, -0.3, Math.sin(a) * r], parent: rig }); bm.lookAt(Math.cos(a) * 1.2, 0.4, Math.sin(a) * 1.2); bm.rotateX(-PI / 2); bm.renderOrder = 8; this.beams.push({ m: bm, base: 0.05, kind: 'key' }); }
+      }   // (no light cones over the cage: on some mobile GPUs they washed out the whole fight)
     mesh(new THREE.BoxGeometry(0.3, 0.3, 9.8), truss, { parent: rig }); mesh(new THREE.BoxGeometry(9.8, 0.3, 0.3), truss, { parent: rig });
     // moving heads on an outer ring: slow drift in a fight, sweeping in intros
     this.movers = []; const mvGeo = new THREE.CylinderGeometry(0.12, 1.3, 26, 14, 1, true); mvGeo.translate(0, -13, 0);
@@ -274,7 +273,7 @@ const Arena = {
     return this;
   },
   MOODS: {
-    fight:  { key: [1.46, 1.34, 1.16], amb: [0.5, 0.49, 0.56], ambB: [0.3, 0.27, 0.3], pool: 1.0, env: [0.16, 0.17, 0.22], beams: 1, movers: 0.45, crowd: 1.0, house: 0, rim: [0.75, 0.9, 1.25], exp: 1.0 },
+    fight:  { key: [1.46, 1.34, 1.16], amb: [0.5, 0.49, 0.56], ambB: [0.3, 0.27, 0.3], pool: 1.0, env: [0.16, 0.17, 0.22], beams: 1, movers: 0, crowd: 1.0, house: 0, rim: [0.75, 0.9, 1.25], exp: 1.0 },
     intro:  { key: [1.25, 1.1, 0.9], amb: [0.2, 0.22, 0.32], ambB: [0.1, 0.1, 0.16], pool: 0.1, env: [0.07, 0.08, 0.13], beams: 0.25, movers: 1.6, crowd: 0.6, house: 0, rim: [0.9, 1.1, 1.7], exp: 1.05 },
     gym:    { key: [1.3, 1.24, 1.12], amb: [0.6, 0.6, 0.64], ambB: [0.36, 0.34, 0.36], pool: 0.85, env: [0.2, 0.21, 0.25], beams: 0.5, movers: 0.0, crowd: 0.5, house: 0.5, rim: [0.5, 0.6, 0.8], exp: 1.0 },
     ko:     { key: [1.6, 1.4, 1.1], amb: [0.42, 0.42, 0.52], ambB: [0.24, 0.22, 0.28], pool: 1.1, env: [0.15, 0.16, 0.22], beams: 1.2, movers: 1.2, crowd: 1.25, house: 0, rim: [0.9, 1.05, 1.5], exp: 1.0 },
@@ -296,7 +295,7 @@ const Arena = {
     this.flashes.material.uniforms.uRate.value = 0.012 + this.excite * 0.1 + this.flash * 0.5;
     for (const b of this.beams) b.m.material.uniforms.uInt.value = b.base * m.beams;
     for (const mv of this.movers) { const sw = this.moodName === 'intro' || this.moodName === 'ko' || this.moodName === 'menu' ? 1 : 0.25, t = this.t * (0.35 + 0.5 * sw) + mv.ph;
-      _v1.set(Math.sin(t * 0.9) * 6 * sw + Math.cos(mv.a) * 2, 0, Math.cos(t * 0.7) * 6 * sw + Math.sin(mv.a) * 2); mv.piv.lookAt(_v1); mv.piv.rotateX(-PI / 2); mv.m.material.uniforms.uInt.value = 0.035 * m.movers; }
+      _v1.set(Math.sin(t * 0.9) * 6 * sw + Math.cos(mv.a) * 2, 0, Math.cos(t * 0.7) * 6 * sw + Math.sin(mv.a) * 2); mv.piv.lookAt(_v1); mv.piv.rotateX(-PI / 2); mv.m.material.uniforms.uInt.value = 0.035 * m.movers; mv.m.visible = m.movers > 0.03 && !IS_TOUCH; }   // sweeping beams only in presentation moods, never during a fight
     // character light: mostly overhead, pulled toward the camera so the visible side always reads
     if (cam) { _v1.copy(cam.position).setY(0).normalize(); _v2.set(-_v1.z, 0, _v1.x); L.uKeyDir.value.set(_v1.x * 0.3 + _v2.x * 0.5, 0.8, _v1.z * 0.3 + _v2.z * 0.5).normalize();
       L.uFillDir.value.set(_v1.x * 0.5 - _v2.x * 0.7, 0.15, _v1.z * 0.5 - _v2.z * 0.7).normalize(); L.uRimDir.value.set(-_v1.x * 0.85 - _v2.x * 0.3, 0.4, -_v1.z * 0.85 - _v2.z * 0.3).normalize(); }

@@ -22,6 +22,7 @@ const Game = {
       else if (this.paused) h = 0;
       if (this.pv && this.pv.anim && !M) { const p = this.pv; p.anim.update(dt); p.model.face.update(dt); p.anim.pt('ballL', _v1); Arena.blob(0, _v1.x, _v1.z, 0.15, 0.6); p.anim.pt('ballR', _v1); Arena.blob(1, _v1.x, _v1.z, 0.15, 0.6); }
       Cam.update(this.paused ? 0.0001 : dt, M); }
+    Portal.gameplay(!!(M && M.state === 'fight' && !M.over && !this.paused && !Replay.active && M.o.p1ai == null && !Portal.adOpen));
     Arena.update(dt, Gfx.camera); Vfx.update(h, Gfx.camera); Sfx.update(dt, this.paused ? null : M); Gfx.tick(dt); UI.tick(dt); if (M && UI.el.hud) UI.hudUpdate(M);
     if (render) Gfx.render(dt);
   },
@@ -36,7 +37,7 @@ const Game = {
   *bootFlow() {
     const sp = UI.splash(), first = !Store.data.tutorialDone || QS.has('tutorial'), a = fighterDef(first ? 'vale' : this.sel.me), b = fighterDef(first ? 'okafor' : 'duarte' === a.id ? 'vale' : 'duarte'); let n = 0;
     const bump = () => { sp.bar.style.transform = `scaleX(${++n / 4})`; }; Models.get(a).then(bump); Models.get(b).then(bump);
-    yield this.loadPair(a, b).then(() => { n = 3; bump(); });
+    yield this.loadPair(a, b).then(() => { n = 3; bump(); }); Portal.loading(false);
     sp.go.textContent = IS_TOUCH ? 'Tap to begin' : 'Press any key'; sp.go.classList.add('blink'); this.anyKey = false;
     while (!this.anyKey && !QS.has('autostart')) yield null;
     Sfx.unlock(); Sfx.ui('ok'); UI.fade(1); yield 0.32; UI.closeScreen();
@@ -55,6 +56,7 @@ const Game = {
   // ── a fight ────────────────────────────────────────────────────────────
   *fightFlow(o) {
     const a = fighterDef(o.me), b = fighterDef(o.opp); let models; this.lastFight = o; this.mode = 'fight'; this.cine = true; UI.fade(1); UI.hudShow(false); Tutorial.stop(); yield 0.32; UI.closeScreen(); UI.clearCard();
+    if (Portal.sdk && this.fightsDone > 0 && o.auto == null) yield Portal.ad('midgame');      // a natural break: between fights, never during one
     yield this.loadPair(a, b).then(m => models = m);
     const M = this.newMatch({ a, b, models, mode: 'fight', level: o.level, p1ai: o.auto, rules: { rounds: o.rounds, roundTime: o.rounds === 1 ? 120 : 75 } });
     if (!o.quick) yield* this.introFlow(); else { Arena.setMood('fight', true); UI.fade(0); }
@@ -101,6 +103,7 @@ const Game = {
       if (!L.down) { L.setState('cine'); L.cineFace = 'tired'; L.anim.play('loseSlump', { hold: true, blendIn: 0.5 }); }
       Cam.focus = null; Cam.play({ dur: 3.4, ease: Ease.out, from: { pos: W.pos.clone().addScaledVector(fw, 2.9).addScaledVector(sx, 1.3).setY(0.7), tgt: W.pos.clone().setY(1.25 * s), fov: 32 }, to: { pos: W.pos.clone().addScaledVector(fw, 2.6).addScaledVector(sx, -0.9).setY(1.05), tgt: W.pos.clone().setY(1.4 * s), fov: 30 } });
       UI.lower(W, false); Sfx.sting(M.o.p1ai != null || w === 0 ? 'win' : 'lose'); Arena.cheer(1, 4); Arena.flashBurst(1); Arena.spot(0, W.pos.x, W.pos.z, 2, 0.8); yield { t: 3.2, skip: true }; }
+    this.fightsDone = (this.fightsDone || 0) + 1; if (w === 0 && M.o.p1ai == null) Portal.happy();
     this.note = this.progress(r); UI.clearCard(); UI.hudShow(false); Arena.setMood('menu'); UI.results(M, this, this.note);
   },
   progress(r) { const M = this.M, S = Store.data; if (M.mode !== 'fight' || M.o.p1ai != null) return ''; S.fights++; const before = S.wins; let note = '';
@@ -141,10 +144,12 @@ const Game = {
   closePanel() { Input.capture = null; UI.closeScreen(); this.paused = false; Sfx.ui('back'); if (this.mode === 'hub') UI.hub(this); },
   async boot() {
     await Promise.race([Promise.all(['italic 800 48px', '600 20px', '800 48px', '700 20px'].map(f => document.fonts.load(f + ' "Barlow Condensed"'))), new Promise(r => setTimeout(r, 2500))]).catch(() => {});
-    Gfx.init(); Cam.init(); Input.init(); Sculptor.init(); IA.Gfx = Gfx; IA.Arena = Arena;
+    await Portal.init(); Portal.loading(true); if (Portal.sdk) Store.attach(Portal.sdk.data);
+    Gfx.init(); Cam.init(); Input.init(); Sculptor.init(); IA.Gfx = Gfx; IA.Arena = Arena; IA.Portal = Portal;
     if (QS.has('view')) { debugView(); return; }
     Arena.build(); Vfx.init(); Replay.init(); UI.init();
     Bus.on('anykey', () => { this.anyKey = true; Sfx.unlock(); });
+    Bus.on('adStart', () => Sfx.mute(true)); Bus.on('adEnd', () => Sfx.mute(false));
     Bus.on('confirm', () => { this.skipReq = true; if (Replay.active) Replay.stop(); else if (this.mode === 'practice' && !this.paused && !UI.mode && !this.co) this.run(this.hubFlow()); });
     Bus.on('pause', () => { if (Replay.active) Replay.stop(); else this.togglePause(); });
     Bus.on('roundEnd', e => { if (!e.last) this.run(this.roundBreak(e)); });
@@ -161,6 +166,10 @@ const Game = {
     IA.Game = this; IA.Sculptor = Sculptor; IA.Models = Models; IA.AICtrl = AICtrl; IA.Bus = Bus; IA.Input = Input; IA.Cam = Cam; IA.MOVES = MOVES; IA.UI = UI; IA.Replay = Replay; IA.Tutorial = Tutorial; IA.Store = Store; IA.Sfx = Sfx;
     IA.dbg.step = (sec, dt = 1 / 60) => { for (let t = 0; t < sec; t += dt) this.step(dt, false); };
     IA.dbg.render = () => Gfx.render(0);
+    /** restart the current match from a fully reproducible state (used to capture videos of a known sequence) */
+    IA.dbg.seededStart = seed => { const M = this.M; reseed(seed); this.co = null; this.cues.length = 0; UI.timers.length = 0; UI.clearCard(); M.restart(); M.simT = 0; Replay.clear();
+      M.f.forEach((f, i) => { const A = f.anim; A.t = rand() * 10; A.bph = rand() * TAU; A.bnc = rand() * TAU; A.gW = A.gL = 0; A.fatigue = A.wobble = A.shake = 0; A.spin = 0; A.settle = 0; A.stepCool = 0; A.noStep = 0; A.layer.clip = null; A.layer.s = 1; f.flash = 0; f.atCage = 0; f.wasGuard = false; f.ctrl = new AICtrl(f, 2, M); f.model.face.blinkT = 1 + rand() * 3; f.model.face.blink = 0; });
+      M.resetPositions(); for (let i = 0; i < 4; i++) M.tick(1 / 60); Cam.mode = 'fight'; Cam.focus = null; Cam.kickP.set(0, 0, 0); Cam.kickV.set(0, 0, 0); Cam.snap(M); Arena.excite = 0.06; Arena.exciteT = 0; Arena.flash = 0; Arena.setMood('fight', true); Gfx.fx.radial = Gfx.fx.chroma = Gfx.fx.flash = 0; UI.hudShow(true); UI.fade(0, true); M.start(); };
     IA.dbg.state = () => { const M = this.M; return { mode: this.mode, ui: UI.mode, co: !!this.co, paused: this.paused, tut: Tutorial.active ? Tutorial.tset[Tutorial.i].id + ':' + Tutorial.count.toFixed(1) : null, M: M && { t: +M.simT.toFixed(2), state: M.state, round: M.round, time: +M.time.toFixed(1), over: M.over, result: M.result, scores: M.scores, f: M.f.map(f => ({ id: f.def.id, hp: +f.hp.toFixed(1), st: +f.st.toFixed(0), cap: +f.stCap.toFixed(0), state: f.state, daze: +f.daze.toFixed(0), guard: +f.guard.toFixed(0), cond: Object.fromEntries(Object.entries(f.cond).map(([k, v]) => [k, Math.round(v)])), pos: [+f.pos.x.toFixed(2), +f.pos.z.toFixed(2)], stats: f.stats, move: f.move && f.move.id })) } }; };
     IA.dbg.exchange = (atk, def, delay = 0, dist = 0.9) => { const M = this.M; M.restart(); M.rules.noClock = true; M.state = 'fight'; const [a, b] = M.f; a.ctrl.passive = b.ctrl.passive = true; if (!a.ctrl.think.patched) { const A = new AICtrl(a, 0, M); A.passive = true; a.ctrl = A; } a.place(-dist / 2, 0, PI / 2); b.place(dist / 2, 0, -PI / 2);
       const ev = [], on = n => Bus.on(n, e => ev.push(n + (e.type ? ':' + e.type : '') + (e.perfect ? ':perfect' : '') + (e.clean ? ':clean' : '') + (e.counter ? ':counter' : '') + (e.kd ? ':kd' : '') + (e.dmg != null ? ':' + e.dmg.toFixed(1) : ''))), hs = ['hit', 'whiff', 'evaded', 'knockdown'].map(n => [n, on(n)]);
