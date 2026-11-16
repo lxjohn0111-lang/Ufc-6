@@ -84,6 +84,7 @@ Start with a short hands-on tutorial, then fight the full roster on three diffic
 | Resolution | 1920 × 1080 (16:9) | 1080 × 1620 (2:3) |
 | Length | 17.6 s | 18.3 s |
 | Encoding | H.264 MP4, 30 fps, no audio track | H.264 MP4, 30 fps, no audio track |
+| File size | 32.9 MB | 34.2 MB |
 | Fight | Mateo Duarte vs Bogdan Koval | Bogdan Koval vs Kai Moana |
 
 Both are real gameplay captured frame by frame from the game itself (no fast-forward), with the HUD hidden: exchanges, blocks and evades, a knockdown, a get-up, and a knockout with the slow-motion fall and knockout camera. There is no text overlay, mouse cursor, logo transition or black bars.
