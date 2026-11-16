@@ -11,12 +11,13 @@ const THREE_URLS = window.IA_THREE ? [window.IA_THREE] : [
   `https://esm.sh/three@${THREE_VERSION}`
 ];
 async function loadThree() {
+  if (window.__THREE__ && window.__THREE__.WebGLRenderer) return window.__THREE__;   // engine embedded in the page (portal builds): nothing to fetch
   for (const url of THREE_URLS) {
     try { return await import(url); } catch (e) { console.warn('three.js source failed:', url); }
   }
   document.body.insertAdjacentHTML('beforeend',
     '<div style="position:fixed;inset:0;display:grid;place-items:center;background:#0e0f12;color:#efe9dc;font:16px/1.5 sans-serif;text-align:center;padding:24px;z-index:99">' +
-    '<div><b style="letter-spacing:.2em;color:#c9a45c">IRON ARENA</b><br><br>Could not load the 3D engine (three.js) from the CDN.<br>Check your connection and reload.</div></div>');
+    '<div><b style="letter-spacing:.2em;color:#c9a45c">IRON ARENA</b><br><br>Could not load the 3D engine (three.js).<br>Check your connection and reload the page.</div></div>');
   throw new Error('three.js unavailable');
 }
 const THREE = await loadThree();

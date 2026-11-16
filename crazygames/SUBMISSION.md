@@ -4,7 +4,7 @@
 
 | Path | What it is | Where it goes |
 |---|---|---|
-| `game/` | The game build. `index.html` is at the root and every path is relative. | Upload as the game files |
+| `game/` | The game build: one self-contained `index.html` plus the licence file. | Upload as the game files |
 | `iron-arena-crazygames.zip` | The same `game/` folder, zipped (contents at the zip root). | Upload this if the form asks for a zip |
 | `videos/iron-arena-preview-landscape-1920x1080.mp4` | Landscape preview video, 16:9 | "Landscape video" |
 | `videos/iron-arena-preview-portrait-1080x1620.mp4` | Portrait preview video, 2:3 | "Portrait video" |
@@ -20,9 +20,9 @@ node tools/build.mjs && node tools/build_crazygames.mjs
 
 ## The build
 
-- 12 files, about 1.3 MB (486 KB zipped). Initial download is the whole game, far under the 50 MB limit (and the 20 MB mobile-homepage limit).
-- Nothing is loaded from a CDN: three.js r160 and the Barlow fonts are bundled. The only external request is the CrazyGames SDK itself.
-- Licences for the bundled three.js (MIT) and fonts (SIL OFL 1.1) are in `game/THIRD-PARTY-LICENSES.txt`.
+- One file, `index.html`, 1.3 MB (491 KB zipped). Initial download is the whole game, far under the 50 MB limit (and the 20 MB mobile-homepage limit).
+- Nothing is fetched at run time: three.js r160 and the Barlow fonts are embedded in `index.html`, so the game works however the portal serves the page (its own URL, a different folder, or an iframe written in directly). The only outside request is the CrazyGames SDK itself, and the game runs without it.
+- Licences for the embedded three.js (MIT) and fonts (SIL OFL 1.1) are in `game/THIRD-PARTY-LICENSES.txt`.
 - Works without the SDK too: if the SDK fails to load, the game runs normally with no ads.
 
 ### SDK v3 integration
